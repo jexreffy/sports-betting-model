@@ -101,6 +101,62 @@ def test_infer_week_skips_stray_historical_unplayed() -> None:
     assert infer_current_week(games) == (2026, 2)
 
 
+def test_pinned_season_does_not_borrow_other_season_week() -> None:
+    games = [
+        Game(
+            game_id="old-open",
+            league=League.NFL,
+            season=2024,
+            week=8,
+            home_team="KC",
+            away_team="BUF",
+        ),
+        Game(
+            game_id="now-open",
+            league=League.NFL,
+            season=2026,
+            week=2,
+            home_team="NE",
+            away_team="PIT",
+            spread_close=-3.0,
+            total_close=41.0,
+        ),
+    ]
+    assert infer_current_week(games, season=2026) == (2026, 2)
+    picks, _ = current_slate_picks(games, mode=Mode.SIMULATION, season=2026)
+    assert picks
+    assert {p.game_id for p in picks} == {"now-open"}
+
+
+def test_simulation_board_stays_on_hands_off_season() -> None:
+    from sbm.web.board import game_cards
+
+    games = [
+        Game(
+            game_id="old-open",
+            league=League.NFL,
+            season=2024,
+            week=8,
+            home_team="KC",
+            away_team="BUF",
+            spread_close=-3.0,
+            total_close=41.0,
+        ),
+        Game(
+            game_id="now-open",
+            league=League.NFL,
+            season=2026,
+            week=2,
+            home_team="NE",
+            away_team="PIT",
+            spread_close=-3.0,
+            total_close=41.0,
+        ),
+    ]
+    cards, _ = game_cards(games, Mode.SIMULATION, season=2026)
+    assert [c["game_id"] for c in cards] == ["now-open"]
+
+
 def test_cfb_week_threshold_skips_early_scoring() -> None:
     games = [
         Game(

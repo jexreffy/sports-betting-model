@@ -22,6 +22,9 @@ SECRET_RE = re.compile(
 
 def out(permission: str, *, user: str = "", agent: str = "") -> None:
     payload: dict[str, str] = {"permission": permission}
+    if permission == "deny":
+        payload["decision"] = "deny"
+        payload["reason"] = user or agent
     if user:
         payload["user_message"] = user
     if agent:
@@ -40,6 +43,17 @@ def load() -> dict:
         return {}
     data = json.loads(raw)
     return data if isinstance(data, dict) else {}
+
+
+def command_of(data: dict) -> str:
+    """Cursor: top-level command. Claude Code: tool_input.command."""
+    raw = data.get("command")
+    if raw:
+        return str(raw)
+    ti = data.get("tool_input")
+    if isinstance(ti, dict) and ti.get("command"):
+        return str(ti["command"])
+    return ""
 
 
 def cwd_of(data: dict) -> str:
@@ -200,7 +214,7 @@ def main() -> None:
         deny("Git/GitHub policy hook could not parse its input.")
         return
 
-    command = str(data.get("command") or "")
+    command = command_of(data)
     cwd = cwd_of(data)
 
     reason = gh_forbidden(command)

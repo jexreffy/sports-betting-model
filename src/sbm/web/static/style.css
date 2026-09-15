@@ -60,7 +60,10 @@ main { padding: 1.25rem 1.5rem 3rem; max-width: 1200px; margin: 0 auto; }
 .stat span { display: block; color: var(--muted); font-size: 0.75rem; }
 .stat strong { font-size: 1.25rem; }
 .grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.25rem; }
-@media (min-width: 960px) { .grid { grid-template-columns: 2fr 1fr; } }
+@media (min-width: 960px) {
+  .grid { grid-template-columns: 2fr 1fr; }
+  .error-panel { grid-column: 1 / -1; }
+}
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { text-align: left; padding: 0.45rem 0.4rem; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
@@ -102,6 +105,52 @@ canvas { width: 100%; max-height: 240px; }
   padding: 0.85rem 1rem 0.7rem;
 }
 .game-card.has-pick { border-color: #388bfd66; }
+.game-card.has-gut { border-color: var(--accent); }
+.gut-chip {
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.market.has-gut { border-color: #58a6ff66; }
+.book-panel { margin: 1rem 0 0; }
+.book-panel .gut-book { display: grid; gap: 0.35rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.gut-book li { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.85rem; align-items: center; }
+.book-meta { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+.drop-ticket {
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.muted { color: var(--muted); }
+.game-card.noisy { border-color: var(--warn); }
+.noise-chip { color: var(--warn); border-color: var(--warn); }
+.market.noisy { border-color: var(--warn); background: #3d2e1055; }
+.honesty-flag, .pick-flag.noisy-text { color: var(--warn); font-size: 0.8rem; grid-column: 1 / -1; }
+.gut-flag { color: var(--accent); }
+.mark-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.mark-row button {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--muted);
+  cursor: pointer;
+}
 .game-meta {
   display: flex;
   flex-wrap: wrap;
@@ -111,7 +160,7 @@ canvas { width: 100%; max-height: 240px; }
   font-size: 0.75rem;
   margin-bottom: 0.65rem;
 }
-.league-chip, .final-chip {
+.league-chip, .final-chip, .noise-chip {
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
   border: 1px solid var(--border);

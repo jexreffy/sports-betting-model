@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sbm.config import RESEARCH_WINDOWS, ResearchWindows
+from sbm.config import RESEARCH_WINDOWS, LeagueParams, ResearchWindows, Settings
 from sbm.mode import Mode
 from sbm.models.engine import ModelEngine
 from sbm.paper import Ledger
@@ -18,6 +18,8 @@ def walk_forward(
     end_season: int | None = None,
     record_picks: bool = True,
     windows: ResearchWindows | None = None,
+    settings: Settings | None = None,
+    params_by_league: dict[League, LeagueParams] | None = None,
 ) -> tuple[list[Pick], dict[League, ModelEngine]]:
     """
     Process games in time order. Ratings update only after each game is predicted.
@@ -41,7 +43,8 @@ def walk_forward(
             continue
         if split.window_for(game.season) is None:
             continue
-        engine = engines.setdefault(game.league, ModelEngine(game.league))
+        extra = (params_by_league or {}).get(game.league)
+        engine = engines.setdefault(game.league, ModelEngine(game.league, params=extra))
         window = split.window_for(game.season)
         if window and not split.record_historical_picks(game.season):
             if game.is_final:
@@ -49,27 +52,33 @@ def walk_forward(
             continue
         pred = engine.predict(game)
         if record_picks:
-            for pick in picks_from_prediction(game, pred, mode):
+            for pick in picks_from_prediction(game, pred, mode, settings):
                 picks.append(pick.model_copy(update={"research_window": window}))
         if game.is_final:
             engine.update(game)
     return picks, engines
 
 
-def infer_current_week(games: list[Game]) -> tuple[int, int] | None:
+def infer_current_week(
+    games: list[Game], *, season: int | None = None
+) -> tuple[int, int] | None:
     """Latest season that still has open games, then that season's first open week.
 
+    When ``season`` is set, week is inferred only inside that season so a pinned
+    2026 diary cannot borrow a week from an unfinished 2024 leftover.
+
     Ignores a stray cancelled historical game (e.g. 2024 with no score) so the
-    board does not jump back two years.
+    board does not jump back two years when season is unpinned.
     """
-    unfinished = [g for g in games if not g.is_final]
+    scoped = [g for g in games if season is None or g.season == season]
+    unfinished = [g for g in scoped if not g.is_final]
     if unfinished:
-        season = max(g.season for g in unfinished)
-        week = min(g.week for g in unfinished if g.season == season)
-        return season, week
-    if not games:
+        found = max(g.season for g in unfinished)
+        week = min(g.week for g in unfinished if g.season == found)
+        return found, week
+    if not scoped:
         return None
-    last = max(games, key=lambda g: (g.season, g.week))
+    last = max(scoped, key=lambda g: (g.season, g.week))
     return last.season, last.week
 
 
@@ -99,7 +108,7 @@ def current_slate(
         )
         target_season, target_week = season, week
         if target_season is None or target_week is None:
-            inferred = infer_current_week(ordered)
+            inferred = infer_current_week(ordered, season=target_season)
             if inferred is None:
                 continue
             target_season = target_season or inferred[0]

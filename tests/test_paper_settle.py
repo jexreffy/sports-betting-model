@@ -63,3 +63,25 @@ def test_unfinished_game_stays_open(tmp_path: Path) -> None:
     open_game = _final().model_copy(update={"home_score": None, "away_score": None})
     assert ledger.settle({"g1": open_game}) == 0
     assert ledger.load()[0].result is None
+
+
+def test_settle_week_leaves_other_weeks_open(tmp_path: Path) -> None:
+    ledger = Ledger(Mode.SIMULATION, path=tmp_path / "simulation" / "ledger.jsonl")
+    ledger.append(LedgerEntry(mode=Mode.SIMULATION, pick=_pick(game_id="w1")))
+    ledger.append(
+        LedgerEntry(
+            mode=Mode.SIMULATION,
+            pick=_pick(game_id="w2").model_copy(update={"week": 2, "game_id": "w2"}),
+        )
+    )
+    games = {
+        "w1": _final("w1"),
+        "w2": _final("w2").model_copy(update={"week": 2}),
+    }
+    assert ledger.settle(games, season=2024, week=2) == 1
+    by_id = {e.pick.game_id: e for e in ledger.load()}
+    assert by_id["w1"].result is None
+    assert by_id["w2"].result == "win"
+    week_summary = ledger.summary(season=2024, week=2)
+    assert week_summary.n_settled == 1
+    assert ledger.summary(season=2024, week=1).n_settled == 0
