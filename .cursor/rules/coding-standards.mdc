@@ -1,11 +1,11 @@
 ---
-description: Python extras on top of Jeffrey user coding standards
+description: Python extras on top of jexreffy user coding standards
 alwaysApply: true
 ---
 
 # This repo (Python)
 
-User-level Jeffrey standards still apply. Here:
+User-level jexreffy standards still apply. Here:
 
 - Python 3.11+ style: `X | None`, Ruff (`E`, `F`, `I`, `UP`).
 - Domain code in `src/sbm/`; keep CLI and FastAPI thin.
