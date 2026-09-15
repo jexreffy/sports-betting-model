@@ -15,5 +15,5 @@ Remote: `https://github.com/jexreffy/sports-betting-model.git`
   3. After any review-driven edits, `pytest -q` and `ruff check src tests` must be green again.
   4. Then `gh pr create` and return the URL.
 - This is the automated suite only. A future AI QA / human-style regression bot is not part of this gate.
-- Never approve or merge the PR. Jeffrey does that himself.
+- Never approve or merge the PR. jexreffy does that himself.
 - Never commit `.env`, `data/raw/`, `data/simulation/`, `data/live/`, or `.venv/`.
