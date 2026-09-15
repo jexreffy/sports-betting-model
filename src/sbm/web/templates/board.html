@@ -32,13 +32,33 @@
       </label>
     </div>
     <section class="stats">
-      <div class="stat"><span>Picks</span><strong>{{ summary.n_picks }}</strong></div>
-      <div class="stat"><span>Settled</span><strong>{{ summary.n_settled }}</strong></div>
-      <div class="stat"><span>Record</span><strong>{{ summary.wins }}-{{ summary.losses }}-{{ summary.pushes }}</strong></div>
-      <div class="stat"><span>Units</span><strong>{{ summary.units }}</strong></div>
-      <div class="stat"><span>ROI</span><strong>{{ summary.roi if summary.roi is not none else "—" }}</strong></div>
-      <div class="stat"><span>Win %</span><strong>{{ summary.ats_pct if summary.ats_pct is not none else "—" }}</strong></div>
+      <div class="stat"><span>System picks</span><strong>{{ summary.system.n_picks }}</strong></div>
+      <div class="stat"><span>System units</span><strong>{{ summary.system.units }}</strong></div>
+      <div class="stat"><span>System record</span><strong>{{ summary.system.wins }}-{{ summary.system.losses }}-{{ summary.system.pushes }}</strong></div>
+      <div class="stat"><span>Gut picks</span><strong>{{ summary.gut.n_picks }}</strong></div>
+      <div class="stat"><span>Gut units</span><strong>{{ summary.gut.units }}</strong></div>
+      <div class="stat"><span>Gut record</span><strong>{{ summary.gut.wins }}-{{ summary.gut.losses }}-{{ summary.gut.pushes }}</strong></div>
       <div class="stat"><span>Brier</span><strong>{{ summary.brier if summary.brier is not none else "—" }}</strong></div>
+    </section>
+    <section class="panel book-panel">
+      <h2>Book</h2>
+      {% if book %}
+      <ul class="gut-book">
+        {% for row in book %}
+        <li>
+          <a href="#game-{{ row.game_id }}">{{ row.label }}</a>
+          <span class="book-meta">
+            {% if row.settled %}<span class="muted">{{ row.result }}</span>{% else %}<span class="muted">open</span>{% endif %}
+            {% if not row.settled %}
+            <button type="button" class="drop-ticket" data-game="{{ row.game_id }}" data-market="{{ row.market }}" data-column="{{ row.column }}">Remove</button>
+            {% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No booked sides yet. System is the model ticket; Gut is anything you take instead or besides. Unmarked markets are not bets.</p>
+      {% endif %}
     </section>
     <div class="grid">
       <section class="panel board-panel">
@@ -48,39 +68,63 @@
         {% elif cards %}
         <div class="game-list" id="game-list">
           {% for card in cards %}
-          <article class="game-card{% if card.has_pick %} has-pick{% endif %}" data-search="{{ card.search_text|e }}">
+          <article id="game-{{ card.game_id }}" class="game-card{% if card.has_pick and not card.noisy %} has-pick{% endif %}{% if card.has_gut %} has-gut{% endif %}{% if card.noisy %} noisy{% endif %}" data-search="{{ card.search_text|e }}">
             <header class="game-meta">
               <span class="league-chip">{{ card.league|upper }}</span>
               <span>{{ card.season }} · Week {{ card.week }}</span>
               {% if card.kickoff %}<time datetime="{{ card.kickoff }}">{{ card.kickoff.replace('T', ' ')[:16] }} UTC</time>{% endif %}
               {% if card.is_final %}<span class="final-chip">Final</span>{% endif %}
+              {% if card.noisy %}<span class="noise-chip">Noisy |edge|</span>{% endif %}
+              {% if card.has_gut %}<span class="gut-chip">Gut {{ card.gut_label }}</span>{% endif %}
             </header>
             <div class="matchup">
               <div class="team away">
                 <span class="loc">Away</span>
-                <strong>{{ card.away_team }}</strong>
+                <strong>{{ card.away_display }}</strong>
                 {% if card.away_score is not none %}<span class="score">{{ card.away_score }}</span>{% endif %}
               </div>
               <div class="at">@</div>
               <div class="team home">
                 <span class="loc">Home</span>
-                <strong>{{ card.home_team }}</strong>
+                <strong>{{ card.home_display }}</strong>
                 {% if card.home_score is not none %}<span class="score">{{ card.home_score }}</span>{% endif %}
               </div>
             </div>
             <ul class="markets">
               {% for m in card.markets %}
-              <li class="market{% if m.pick %} picked{% endif %}">
+              <li class="market{% if m.model_ticket and not m.noisy %} picked{% endif %}{% if m.gut and not m.gut.skipped %} has-gut{% endif %}{% if m.noisy %} noisy{% endif %}">
                 <div class="market-name">{{ m.label }}</div>
                 <div class="market-lines">
                   <span><em>Model</em> {{ m.model or "—" }}</span>
                   <span><em>Market</em> {{ m.market or "—" }}</span>
                 </div>
-                {% if m.pick %}
-                <div class="pick-flag">
-                  Pick {{ m.pick.team_or_side }}
-                  · edge {{ m.pick.edge }}
-                  · {{ m.pick.american_odds }}
+                {% if m.noisy or m.early_season %}
+                <div class="honesty-flag">
+                  {% if m.noisy %}Noisy edge — not a lock.{% endif %}
+                  {% if m.early_season %} Early-season CFB.{% endif %}
+                </div>
+                {% endif %}
+                {% if m.model_ticket %}
+                <div class="pick-flag{% if m.noisy %} noisy-text{% endif %}">
+                  Model ticket {{ m.model_ticket.ticket }}
+                  · edge {{ m.model_ticket.edge }}
+                  · {{ m.model_ticket.american_odds }}
+                </div>
+                {% endif %}
+                {% if m.system %}
+                <div class="pick-flag">Booked system {{ m.system.ticket }}</div>
+                {% endif %}
+                {% if m.gut %}
+                <div class="pick-flag gut-flag">Gut {{ m.gut.ticket }}</div>
+                {% endif %}
+                {% if m.open_for_marks %}
+                <div class="mark-row" data-game="{{ card.game_id }}" data-market="{{ m.name }}">
+                  {% if m.model_ticket %}
+                  <button type="button" data-column="system" data-side="{{ m.model_ticket.side }}">System {{ m.model_ticket.ticket }}</button>
+                  {% endif %}
+                  {% for opt in m.side_options %}
+                  <button type="button" data-column="gut" data-side="{{ opt.side }}">Gut {{ opt.label }}</button>
+                  {% endfor %}
                 </div>
                 {% endif %}
               </li>
@@ -95,9 +139,35 @@
         {% endif %}
       </section>
       <section class="panel">
-        <h2>Bankroll (this mode only)</h2>
+        <h2>Bankroll (System column, this mode)</h2>
         <canvas id="bankroll" height="220"></canvas>
       </section>
+      {% if errors %}
+      <section class="panel error-panel">
+        <h2>Week errors {{ errors.season }}w{{ errors.week }}</h2>
+        {% if errors.by_league %}
+        <table>
+          <thead>
+            <tr><th>League</th><th>n</th><th>Margin vs close</th><th>Margin vs final</th><th>Total vs close</th><th>Total vs final</th></tr>
+          </thead>
+          <tbody>
+            {% for row in errors.by_league %}
+            <tr>
+              <td>{{ row.league }}</td>
+              <td>{{ row.n }}</td>
+              <td>{{ row.mean_margin_vs_close if row.mean_margin_vs_close is not none else "—" }}</td>
+              <td>{{ row.mean_margin_vs_final if row.mean_margin_vs_final is not none else "—" }}</td>
+              <td>{{ row.mean_total_vs_close if row.mean_total_vs_close is not none else "—" }}</td>
+              <td>{{ row.mean_total_vs_final if row.mean_total_vs_final is not none else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty">No errors for this slate yet.</p>
+        {% endif %}
+      </section>
+      {% endif %}
     </div>
   </main>
   <script>
@@ -126,6 +196,65 @@
         }
       }
     });
+    }
+
+    const boardMode = {{ mode | tojson }};
+    document.addEventListener("click", async (event) => {
+      const drop = event.target.closest(".drop-ticket");
+      if (drop) {
+        event.preventDefault();
+        const payload = {
+          mode: boardMode,
+          game_id: drop.getAttribute("data-game"),
+          market: drop.getAttribute("data-market"),
+          column: drop.getAttribute("data-column"),
+        };
+        const resp = await fetch("/api/unmark", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          window.alert(text || "Remove failed");
+          return;
+        }
+        window.location.reload();
+        return;
+      }
+      const btn = event.target.closest(".mark-row button");
+      if (!btn) return;
+      const row = btn.closest(".mark-row");
+      if (!row) return;
+      event.preventDefault();
+      const payload = {
+        mode: boardMode,
+        game_id: row.getAttribute("data-game"),
+        market: row.getAttribute("data-market"),
+        column: btn.getAttribute("data-column"),
+        skipped: false,
+        side: btn.getAttribute("data-side"),
+      };
+      const resp = await fetch("/api/mark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        window.alert(text || "Mark failed");
+        return;
+      }
+      const id = row.getAttribute("data-game");
+      sessionStorage.setItem("sbm-scroll-game", id || "");
+      window.location.reload();
+    });
+
+    const scrollId = sessionStorage.getItem("sbm-scroll-game");
+    if (scrollId) {
+      sessionStorage.removeItem("sbm-scroll-game");
+      const marked = document.getElementById("game-" + scrollId);
+      if (marked) marked.scrollIntoView({ block: "center" });
     }
 
     const search = document.getElementById("team-search");

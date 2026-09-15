@@ -124,13 +124,54 @@ def simulate_picks(
     week: Annotated[int | None, typer.Option()] = None,
     league: Annotated[str | None, typer.Option()] = None,
 ) -> None:
-    """Paper the current (or specified) real week into the simulation ledger."""
+    """Paper the current (or specified) real week into the simulation diary."""
+    _run_week_picks(Mode.SIMULATION, season, week, league)
+
+
+@simulate_app.command("save-week")
+def simulate_save_week(
+    season: Annotated[int | None, typer.Option()] = None,
+    week: Annotated[int | None, typer.Option()] = None,
+    league: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Alias for `simulate picks` — write this week's slate into the 2026 diary."""
     _run_week_picks(Mode.SIMULATION, season, week, league)
 
 
 @simulate_app.command("settle")
-def simulate_settle() -> None:
-    _settle(Mode.SIMULATION)
+def simulate_settle(
+    season: Annotated[int | None, typer.Option()] = None,
+    week: Annotated[int | None, typer.Option()] = None,
+) -> None:
+    _settle(Mode.SIMULATION, season, week)
+
+
+@simulate_app.command("settle-week")
+def simulate_settle_week(
+    season: Annotated[int | None, typer.Option()] = None,
+    week: Annotated[int | None, typer.Option()] = None,
+) -> None:
+    """Alias for `simulate settle` — grade only this week's diary rows."""
+    _settle(Mode.SIMULATION, season, week)
+
+
+@simulate_app.command("tune")
+def simulate_tune(
+    report_dir: Annotated[Path, typer.Option()] = Path("reports/tune"),
+    league: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Fit on 2021–23 error metrics; confirm 2024–25. Never scores 2026 historical P&L."""
+    from sbm.data.store import load_games
+    from sbm.tune import tune, write_tune_report
+
+    games = load_games(_league(league))
+    if not games:
+        raise typer.BadParameter("No games found. Run `sbm ingest` first.")
+    report = tune(games)
+    path = write_tune_report(report, report_dir / "tune.json")
+    typer.echo(report.model_dump_json(indent=2))
+    typer.echo(f"Wrote {path}")
+    typer.echo("Suggested params are not applied automatically.")
 
 
 @live_app.command("picks")
@@ -149,8 +190,11 @@ def live_picks(
 
 
 @live_app.command("settle")
-def live_settle() -> None:
-    _settle(Mode.LIVE)
+def live_settle(
+    season: Annotated[int | None, typer.Option()] = None,
+    week: Annotated[int | None, typer.Option()] = None,
+) -> None:
+    _settle(Mode.LIVE, season, week)
 
 
 @app.command()
@@ -173,6 +217,8 @@ def _run_week_picks(mode: Mode, season: int | None, week: int | None, league: st
     from sbm.paper import Ledger
     from sbm.providers.lines import default_provider
 
+    if season is None and mode == Mode.SIMULATION:
+        season = RESEARCH_WINDOWS.hands_off
     games = default_provider().attach_lines(load_games(_league(league)))
     if not games:
         raise typer.BadParameter("No games found. Run `sbm ingest` first.")
@@ -181,7 +227,7 @@ def _run_week_picks(mode: Mode, season: int | None, week: int | None, league: st
     )
     ledger = Ledger(mode)
     added = ledger.record_picks(picks)
-    typer.echo(f"{mode.value}: {len(picks)} candidate picks, {added} new ledger rows")
+    typer.echo(f"{mode.value}: {len(picks)} candidate picks, {added} new diary rows")
     for pick in picks:
         typer.echo(
             f"  {pick.league} {pick.season}w{pick.week} {pick.market} "
@@ -189,14 +235,27 @@ def _run_week_picks(mode: Mode, season: int | None, week: int | None, league: st
         )
 
 
-def _settle(mode: Mode) -> None:
+def _settle(mode: Mode, season: int | None, week: int | None) -> None:
+    from sbm.backtest import infer_current_week
     from sbm.data.store import games_by_id, load_games
+    from sbm.errors import week_error_report
     from sbm.paper import Ledger
 
     ledger = Ledger(mode)
-    n = ledger.settle(games_by_id(load_games()))
-    typer.echo(f"Settled {n} {mode.value} picks")
-    typer.echo(ledger.summary().model_dump_json(indent=2))
+    games = load_games()
+    if season is None or week is None:
+        inferred = ledger.infer_open_week()
+        if inferred is None:
+            inferred = infer_current_week(games)
+        if inferred is not None:
+            season = season or inferred[0]
+            week = week or inferred[1]
+    n = ledger.settle(games_by_id(games), season=season, week=week)
+    typer.echo(f"Settled {n} {mode.value} picks for {season}w{week}")
+    typer.echo(ledger.summary(season=season, week=week).model_dump_json(indent=2))
+    if season is not None and week is not None:
+        report = week_error_report(games, season=season, week=week, mode=mode)
+        typer.echo(report.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":

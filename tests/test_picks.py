@@ -1,8 +1,8 @@
 from sbm.config import NFL_PARAMS, Settings
 from sbm.mode import Mode
 from sbm.odds import home_cover_prob, margin_to_win_prob
-from sbm.picks import picks_from_prediction
-from sbm.schema import Game, League, Market, Prediction, Side
+from sbm.picks import pick_from_market_side, picks_from_prediction
+from sbm.schema import Game, League, Market, Prediction, Side, StakeColumn
 
 
 def _game(**kwargs: object) -> Game:
@@ -69,3 +69,26 @@ def test_cfb_week_gate_off_for_current_board() -> None:
     board = picks_from_prediction(game, pred, Mode.SIMULATION, _settings(), apply_week_gate=False)
     assert gated == []
     assert board
+
+
+def test_gut_moneyline_without_model_gate() -> None:
+    game = _game(home_team="DEN", away_team="JAX", home_moneyline=-140, away_moneyline=120)
+    pred = Prediction(
+        game_id="g1",
+        predicted_home_margin=1.2,
+        predicted_total=45.0,
+        home_win_prob=0.54,
+    )
+    gated = picks_from_prediction(game, pred, Mode.LIVE, _settings())
+    assert Market.MONEYLINE not in {p.market for p in gated}
+    pick = pick_from_market_side(
+        game,
+        pred,
+        mode=Mode.LIVE,
+        market=Market.MONEYLINE,
+        side=Side.AWAY,
+        column=StakeColumn.GUT,
+    )
+    assert pick.team_or_side == "JAX"
+    assert pick.american_odds == 120
+    assert pick.column == StakeColumn.GUT

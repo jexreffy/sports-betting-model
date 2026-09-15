@@ -31,6 +31,11 @@ class Side(StrEnum):
     UNDER = "under"
 
 
+class StakeColumn(StrEnum):
+    SYSTEM = "system"
+    GUT = "gut"
+
+
 class Game(BaseModel):
     game_id: str
     league: League
@@ -91,6 +96,8 @@ class Pick(BaseModel):
     units: float = 1.0
     placed_at: datetime | None = None
     research_window: ResearchWindow | None = None
+    column: StakeColumn = StakeColumn.SYSTEM
+    skipped: bool = False
 
 
 class LedgerEntry(BaseModel):
@@ -119,6 +126,17 @@ class BankrollPoint(BaseModel):
     game_id: str
 
 
+class ColumnStats(BaseModel):
+    n_picks: int = 0
+    n_settled: int = 0
+    wins: int = 0
+    losses: int = 0
+    pushes: int = 0
+    units: float = 0.0
+    roi: float | None = None
+    ats_pct: float | None = None
+
+
 class SummaryStats(BaseModel):
     mode: Mode
     n_picks: int = 0
@@ -130,6 +148,8 @@ class SummaryStats(BaseModel):
     roi: float | None = None
     ats_pct: float | None = None
     brier: float | None = Field(default=None)
+    system: ColumnStats = Field(default_factory=ColumnStats)
+    gut: ColumnStats = Field(default_factory=ColumnStats)
 
     def as_dict(self) -> dict:
         return self.model_dump()

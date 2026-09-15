@@ -18,6 +18,11 @@ def test_help() -> None:
     stdout = _plain(result.stdout)
     assert "simulate" in stdout
     assert "live" in stdout
+    sim = runner.invoke(app, ["simulate", "--help"], color=False)
+    sim_out = _plain(sim.stdout)
+    assert "save-week" in sim_out
+    assert "settle-week" in sim_out
+    assert "tune" in sim_out
 
 
 def test_serve_help_documents_reload() -> None:

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     total_edge_points: float = 1.5
     moneyline_min_ev: float = 0.03
     juice: int = -110
+    noisy_edge_points: float = 8.0
 
 
 class LeagueParams:
