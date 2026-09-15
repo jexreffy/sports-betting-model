@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SBM — {{ mode }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="brand">SBM · NFL + CFB</div>
+    <nav class="switcher" aria-label="Mode">
+      {% for m in modes %}
+      <a class="{{ 'active-' + m if m == mode else '' }}" href="/?mode={{ m }}&league={{ league }}">{{ m }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+  <main>
+    <div class="banner">{{ banner }}</div>
+    <div class="filters">
+      League:
+      <a href="/?mode={{ mode }}&league=all">all</a>
+      <a href="/?mode={{ mode }}&league=nfl">nfl</a>
+      <a href="/?mode={{ mode }}&league=cfb">cfb</a>
+      <label class="team-search">
+        <span class="visually-hidden">Search teams</span>
+        <input id="team-search" type="search" placeholder="Find a team (Steelers, Pitt, Michigan…)" autocomplete="off" />
+      </label>
+    </div>
+    <section class="stats">
+      <div class="stat"><span>Picks</span><strong>{{ summary.n_picks }}</strong></div>
+      <div class="stat"><span>Settled</span><strong>{{ summary.n_settled }}</strong></div>
+      <div class="stat"><span>Record</span><strong>{{ summary.wins }}-{{ summary.losses }}-{{ summary.pushes }}</strong></div>
+      <div class="stat"><span>Units</span><strong>{{ summary.units }}</strong></div>
+      <div class="stat"><span>ROI</span><strong>{{ summary.roi if summary.roi is not none else "—" }}</strong></div>
+      <div class="stat"><span>Win %</span><strong>{{ summary.ats_pct if summary.ats_pct is not none else "—" }}</strong></div>
+      <div class="stat"><span>Brier</span><strong>{{ summary.brier if summary.brier is not none else "—" }}</strong></div>
+    </section>
+    <div class="grid">
+      <section class="panel board-panel">
+        <h2>This week’s board{% if slate_label %} <span class="slate-label">{{ slate_label }}</span>{% endif %}</h2>
+        {% if not has_games %}
+        <p class="empty">No games ingested yet. Run <code>sbm ingest</code>.</p>
+        {% elif cards %}
+        <div class="game-list" id="game-list">
+          {% for card in cards %}
+          <article class="game-card{% if card.has_pick %} has-pick{% endif %}" data-search="{{ card.search_text|e }}">
+            <header class="game-meta">
+              <span class="league-chip">{{ card.league|upper }}</span>
+              <span>{{ card.season }} · Week {{ card.week }}</span>
+              {% if card.kickoff %}<time datetime="{{ card.kickoff }}">{{ card.kickoff.replace('T', ' ')[:16] }} UTC</time>{% endif %}
+              {% if card.is_final %}<span class="final-chip">Final</span>{% endif %}
+            </header>
+            <div class="matchup">
+              <div class="team away">
+                <span class="loc">Away</span>
+                <strong>{{ card.away_team }}</strong>
+                {% if card.away_score is not none %}<span class="score">{{ card.away_score }}</span>{% endif %}
+              </div>
+              <div class="at">@</div>
+              <div class="team home">
+                <span class="loc">Home</span>
+                <strong>{{ card.home_team }}</strong>
+                {% if card.home_score is not none %}<span class="score">{{ card.home_score }}</span>{% endif %}
+              </div>
+            </div>
+            <ul class="markets">
+              {% for m in card.markets %}
+              <li class="market{% if m.pick %} picked{% endif %}">
+                <div class="market-name">{{ m.label }}</div>
+                <div class="market-lines">
+                  <span><em>Model</em> {{ m.model or "—" }}</span>
+                  <span><em>Market</em> {{ m.market or "—" }}</span>
+                </div>
+                {% if m.pick %}
+                <div class="pick-flag">
+                  Pick {{ m.pick.team_or_side }}
+                  · edge {{ m.pick.edge }}
+                  · {{ m.pick.american_odds }}
+                </div>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+          </article>
+          {% endfor %}
+        </div>
+        <p id="search-empty" class="empty" hidden>No games this week match that team.</p>
+        {% else %}
+        <p class="empty">No games on this week’s slate.</p>
+        {% endif %}
+      </section>
+      <section class="panel">
+        <h2>Bankroll (this mode only)</h2>
+        <canvas id="bankroll" height="220"></canvas>
+      </section>
+    </div>
+  </main>
+  <script>
+    const curve = {{ curve | tojson }};
+    const ctx = document.getElementById("bankroll");
+    if (ctx && typeof Chart !== "undefined") {
+    new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: curve.map(p => p.index),
+        datasets: [{
+          label: "Units",
+          data: curve.map(p => p.cumulative_units),
+          borderColor: "#58a6ff",
+          backgroundColor: "rgba(88,166,255,0.15)",
+          fill: true,
+          tension: 0.2,
+          pointRadius: 0,
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+          y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } }
+        }
+      }
+    });
+    }
+
+    const search = document.getElementById("team-search");
+    const list = document.getElementById("game-list");
+    const empty = document.getElementById("search-empty");
+    function cardMatches(haystack, query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      const h = (haystack || "").toLowerCase();
+      if (h.includes(q)) return true;
+      return q.split(/\s+/).every((word) => h.includes(word));
+    }
+    function applySearch() {
+      if (!list || !search) return;
+      const q = search.value;
+      let shown = 0;
+      list.querySelectorAll(".game-card").forEach((card) => {
+        const ok = cardMatches(card.getAttribute("data-search"), q);
+        card.hidden = !ok;
+        if (ok) shown += 1;
+      });
+      if (empty) empty.hidden = shown > 0 || q.trim() === "";
+    }
+    if (search) {
+      const params = new URLSearchParams(window.location.search);
+      const initial = params.get("q");
+      if (initial) search.value = initial;
+      search.addEventListener("input", applySearch);
+      applySearch();
+    }
+  </script>
+</body>
+</html>

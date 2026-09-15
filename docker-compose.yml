@@ -1,0 +1,32 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      SBM_DATA_DIR: /app/data
+    volumes:
+      - simulation-data:/app/data/simulation
+      - live-data:/app/data/live
+      - raw-data:/app/data/raw
+    command: ["sbm", "serve", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    profiles: ["worker"]
+    build: .
+    env_file:
+      - .env
+    environment:
+      SBM_DATA_DIR: /app/data
+    volumes:
+      - simulation-data:/app/data/simulation
+      - live-data:/app/data/live
+      - raw-data:/app/data/raw
+    command: ["sbm", "ingest", "--league", "all"]
+
+volumes:
+  simulation-data:
+  live-data:
+  raw-data:

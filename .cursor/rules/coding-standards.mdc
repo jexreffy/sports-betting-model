@@ -1,0 +1,14 @@
+---
+description: Python extras on top of Jeffrey user coding standards
+alwaysApply: true
+---
+
+# This repo (Python)
+
+User-level Jeffrey standards still apply. Here:
+
+- Python 3.11+ style: `X | None`, Ruff (`E`, `F`, `I`, `UP`).
+- Domain code in `src/sbm/`; keep CLI and FastAPI thin.
+- Automated suite (`pytest` + `ruff`) covers odds math, leakage, and mode isolation. That suite is the PR gate — not a future AI QA bot.
+- Simulation vs Live ledgers never mix.
+- Historical P&L uses research windows (warmup / search / holdout); 2026 is hands-off for backtests.

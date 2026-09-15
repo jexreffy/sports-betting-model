@@ -1,0 +1,12 @@
+{
+  "mode": "simulation",
+  "n_picks": 27,
+  "n_settled": 27,
+  "wins": 6,
+  "losses": 19,
+  "pushes": 2,
+  "units": -14.03,
+  "roi": -0.5612,
+  "ats_pct": 0.24,
+  "brier": 0.2396
+}

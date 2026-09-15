@@ -1,0 +1,161 @@
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --good: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+  --sim: #3fb950;
+  --live: #d29922;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+}
+a { color: var(--accent); text-decoration: none; }
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.brand { font-weight: 700; letter-spacing: 0.02em; }
+.switcher { display: flex; gap: 0.4rem; }
+.switcher a, .chip {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+}
+.switcher a.active-simulation { background: #16351f; color: var(--sim); border-color: var(--sim); }
+.switcher a.active-live { background: #3d2e10; color: var(--live); border-color: var(--live); }
+main { padding: 1.25rem 1.5rem 3rem; max-width: 1200px; margin: 0 auto; }
+.banner {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #21262d;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  margin-bottom: 1.25rem;
+}
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; }
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+.stat span { display: block; color: var(--muted); font-size: 0.75rem; }
+.stat strong { font-size: 1.25rem; }
+.grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.25rem; }
+@media (min-width: 960px) { .grid { grid-template-columns: 2fr 1fr; } }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 0.45rem 0.4rem; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+}
+h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+.slate-label { color: var(--muted); font-weight: 500; }
+.empty { color: var(--muted); }
+canvas { width: 100%; max-height: 240px; }
+.filters { margin-bottom: 1rem; color: var(--muted); font-size: 0.85rem; display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; }
+.filters a { margin-right: 0; }
+.team-search { margin-left: auto; }
+.team-search input {
+  width: min(22rem, 100%);
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.board-panel { min-width: 0; }
+.game-list { display: flex; flex-direction: column; gap: 0.85rem; }
+.game-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #0d1117;
+  padding: 0.85rem 1rem 0.7rem;
+}
+.game-card.has-pick { border-color: #388bfd66; }
+.game-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+.league-chip, .final-chip {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.final-chip { color: var(--warn); border-color: var(--warn); }
+.matchup {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.team { display: flex; flex-direction: column; gap: 0.15rem; }
+.team.home { text-align: right; }
+.team .loc { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; }
+.team strong { font-size: 1.35rem; letter-spacing: 0.02em; }
+.team .score { color: var(--accent); font-weight: 700; }
+.at { color: var(--muted); font-weight: 700; }
+.markets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.market {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.35rem 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: #161b22;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+}
+.market.picked { border-color: #3fb95066; background: #16351f55; }
+.market-name { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 0.15rem; }
+.market-lines { display: flex; flex-wrap: wrap; gap: 0.75rem 1.1rem; }
+.market-lines em { color: var(--muted); font-style: normal; margin-right: 0.3rem; font-size: 0.75rem; }
+.pick-flag {
+  grid-column: 1 / -1;
+  color: var(--good);
+  font-size: 0.8rem;
+  font-weight: 600;
+}

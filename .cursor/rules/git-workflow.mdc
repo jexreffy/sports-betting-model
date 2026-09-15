@@ -1,0 +1,19 @@
+---
+description: Never push main; review (Bugbot/CI) before every PR
+alwaysApply: true
+---
+
+# Git workflow (this repo)
+
+Remote: `https://github.com/jexreffy/sports-betting-model.git`
+
+- Treat `main` as protected even if GitHub does not. Never commit, merge, or push it.
+- Branch → commit on the branch → review → PR into `main`.
+- When he says the feature is complete and ready for PR:
+  1. `pytest -q` and `ruff check src tests` must be green **before** review.
+  2. Then Bugbot on the branch diff.
+  3. After any review-driven edits, `pytest -q` and `ruff check src tests` must be green again.
+  4. Then `gh pr create` and return the URL.
+- This is the automated suite only. A future AI QA / human-style regression bot is not part of this gate.
+- Never approve or merge the PR. Jeffrey does that himself.
+- Never commit `.env`, `data/raw/`, `data/simulation/`, `data/live/`, or `.venv/`.
