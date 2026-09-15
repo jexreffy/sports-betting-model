@@ -168,3 +168,46 @@ def test_settle_rejects_unfinished_game():
     )
     with pytest.raises(ValueError, match="not final"):
         settle_pick(pick, game)
+
+
+def test_settle_uses_frozen_pick_line_not_updated_close():
+    game = Game(
+        game_id="g1",
+        league=League.NFL,
+        season=2024,
+        week=1,
+        home_team="KC",
+        away_team="BAL",
+        home_score=24,
+        away_score=20,
+        spread_close=-7.0,
+        total_close=50.0,
+    )
+    spread = Pick(
+        mode=Mode.SIMULATION,
+        game_id="g1",
+        league=League.NFL,
+        season=2024,
+        week=1,
+        market=Market.SPREAD,
+        side=Side.HOME,
+        team_or_side="KC",
+        market_line=-3.0,
+        edge=2.0,
+    )
+    total = Pick(
+        mode=Mode.SIMULATION,
+        game_id="g1",
+        league=League.NFL,
+        season=2024,
+        week=1,
+        market=Market.TOTAL,
+        side=Side.UNDER,
+        team_or_side="under",
+        market_line=45.0,
+        edge=2.0,
+    )
+    # Home won by 4: covers frozen -3, fails later -7 close.
+    assert settle_pick(spread, game)[0] == "win"
+    # 44 points: under frozen 45, over a later 50 close.
+    assert settle_pick(total, game)[0] == "win"

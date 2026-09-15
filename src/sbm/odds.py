@@ -97,9 +97,10 @@ def settle_pick(pick: Pick, game: Game) -> tuple[str, float]:
         raise ValueError(f"Game {game.game_id} is not final")
 
     if pick.market == Market.SPREAD:
-        if game.spread_close is None:
+        line = pick.market_line if pick.market_line is not None else game.spread_close
+        if line is None:
             raise ValueError(f"No spread to settle {game.game_id}")
-        home_result = cover_home_spread(game.home_margin or 0.0, game.spread_close)
+        home_result = cover_home_spread(game.home_margin or 0.0, line)
         if pick.side == Side.HOME:
             result = home_result
         elif pick.side == Side.AWAY:
@@ -107,9 +108,10 @@ def settle_pick(pick: Pick, game: Game) -> tuple[str, float]:
         else:
             raise ValueError("Spread pick must be home or away")
     elif pick.market == Market.TOTAL:
-        if game.total_close is None or game.total_points is None:
+        line = pick.market_line if pick.market_line is not None else game.total_close
+        if line is None or game.total_points is None:
             raise ValueError(f"No total to settle {game.game_id}")
-        result = cover_total(game.total_points, game.total_close, pick.side)
+        result = cover_total(game.total_points, line, pick.side)
     elif pick.market == Market.MONEYLINE:
         if game.home_margin is None:
             raise ValueError(f"No score to settle {game.game_id}")
