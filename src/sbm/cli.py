@@ -9,9 +9,18 @@ from sbm.config import RESEARCH_WINDOWS
 from sbm.mode import Mode
 from sbm.schema import League
 
-app = typer.Typer(help="NFL + CFB paper betting model. Never places sportsbook wagers.")
-simulate_app = typer.Typer(help="Simulation lab: historical replay and paper bets on real games.")
-live_app = typer.Typer(help="Live 2027-shaped board (practice by default). Isolated ledger.")
+app = typer.Typer(
+    help="NFL + CFB paper betting model. Never places sportsbook wagers.",
+    rich_markup_mode=None,
+)
+simulate_app = typer.Typer(
+    help="Simulation lab: historical replay and paper bets on real games.",
+    rich_markup_mode=None,
+)
+live_app = typer.Typer(
+    help="Live 2027-shaped board (practice by default). Isolated ledger.",
+    rich_markup_mode=None,
+)
 app.add_typer(simulate_app, name="simulate")
 app.add_typer(live_app, name="live")
 
@@ -148,7 +157,7 @@ def live_settle() -> None:
 def serve(
     host: Annotated[str, typer.Option()] = "127.0.0.1",
     port: Annotated[int, typer.Option()] = 8000,
-    reload: Annotated[bool, typer.Option("--reload")] = False,
+    reload: Annotated[bool, typer.Option("--reload/--no-reload")] = False,
 ) -> None:
     """Local dashboard. Bind 127.0.0.1 by default; use --reload while editing Python."""
     import uvicorn
