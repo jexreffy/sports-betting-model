@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,7 +20,10 @@ app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
 def _mode(value: str) -> Mode:
-    return parse_mode(value)
+    try:
+        return parse_mode(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _banner(mode: Mode) -> str:
@@ -81,7 +84,10 @@ def index(request: Request, mode: str = "simulation", league: str | None = None)
 
 @app.get("/api/board")
 def api_board(mode: str = "simulation", league: str | None = None) -> JSONResponse:
-    return JSONResponse(_board_payload(_mode(mode), league))
+    return JSONResponse(
+        _board_payload(_mode(mode), league),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/health")

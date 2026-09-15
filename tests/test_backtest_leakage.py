@@ -1,7 +1,7 @@
 from sbm.backtest import current_slate_picks, infer_current_week, walk_forward
 from sbm.mode import Mode
 from sbm.models.engine import ModelEngine
-from sbm.schema import Game, League
+from sbm.schema import Game, League, Market
 
 
 def _g(
@@ -45,9 +45,9 @@ def test_week2_prediction_ignores_week2_scores() -> None:
     picks, engines = walk_forward(games, mode=Mode.SIMULATION)
     # Engine after walk_forward has seen week 2, but the pick used the pre-update state.
     assert picks
-    week2 = [p for p in picks if p.game_id == "w2" and p.market == "spread"]
+    week2 = [p for p in picks if p.game_id == "w2" and p.market == Market.SPREAD]
     assert week2
-    # Rebuild the honest week-2 margin
+    assert abs(week2[0].model_line - (-honest)) < 1e-6
     assert abs(engines[League.NFL].elo.rating("AAA") - leaked.elo.rating("AAA")) < 1e-6
 
 

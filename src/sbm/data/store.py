@@ -6,11 +6,25 @@ from sbm.paths import games_path
 from sbm.schema import Game, League
 
 
-def save_games(league: League, games: list[Game], path: Path | None = None) -> Path:
+def save_games(
+    league: League,
+    games: list[Game],
+    path: Path | None = None,
+    *,
+    replace_seasons: set[int] | None = None,
+) -> Path:
+    """Write games, replacing only the given seasons (default: seasons in `games`).
+
+    Other seasons already on disk are kept so a 2026-only ingest cannot wipe 2015–2025.
+    """
     dest = path or games_path(league.value)
     dest.parent.mkdir(parents=True, exist_ok=True)
+    seasons = replace_seasons if replace_seasons is not None else {g.season for g in games}
+    existing = _read(dest) if dest.exists() else []
+    kept = [g for g in existing if g.season not in seasons]
+    merged = _sort(kept + list(games))
     with dest.open("w", encoding="utf-8") as fh:
-        for game in games:
+        for game in merged:
             fh.write(game.model_dump_json() + "\n")
     return dest
 
@@ -47,9 +61,9 @@ def _sort(games: list[Game]) -> list[Game]:
     return sorted(
         games,
         key=lambda g: (
-            g.kickoff.isoformat() if g.kickoff else "",
             g.season,
             g.week,
+            g.kickoff.isoformat() if g.kickoff else "",
             g.game_id,
         ),
     )

@@ -26,6 +26,13 @@ class EloBook:
             )
         self._seen_seasons[team] = season
 
+    def _rating_for_season(self, team: str, season: int) -> float:
+        last = self._seen_seasons.get(team)
+        current = self.ratings[team]
+        if last is not None and season > last:
+            return self.params.base_elo + self.params.revert * (current - self.params.base_elo)
+        return current
+
     def rest_adjustment(self, game: Game) -> float:
         if game.home_rest_days is None or game.away_rest_days is None:
             return 0.0
@@ -34,15 +41,17 @@ class EloBook:
         return max(-self.params.rest_cap, min(self.params.rest_cap, adj))
 
     def predicted_home_margin(self, game: Game) -> float:
-        self.maybe_revert(game.home_team, game.season)
-        self.maybe_revert(game.away_team, game.season)
         hfa = 0.0 if game.is_neutral else self.params.hfa_points
-        diff = self.ratings[game.home_team] - self.ratings[game.away_team]
+        diff = self._rating_for_season(game.home_team, game.season) - self._rating_for_season(
+            game.away_team, game.season
+        )
         return diff / self.params.elo_per_point + hfa + self.rest_adjustment(game)
 
     def update(self, game: Game) -> None:
         if not game.is_final or game.home_margin is None:
             return
+        self.maybe_revert(game.home_team, game.season)
+        self.maybe_revert(game.away_team, game.season)
         pred = self.predicted_home_margin(game)
         error = game.home_margin - pred
         shift = self.params.k * (error / self.params.margin_sigma)

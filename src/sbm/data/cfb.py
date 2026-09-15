@@ -37,8 +37,7 @@ def _is_fbs(game: dict) -> bool:
         away_class = (game.get("awayDivision") or game.get("away_division") or "").lower()
     if home_class or away_class:
         return home_class == "fbs" and away_class == "fbs"
-    # If classification is missing, keep the game (exporter already filtered).
-    return True
+    return False
 
 
 def _consensus_line(lines: list[dict]) -> tuple[float | None, float | None, int | None, int | None]:

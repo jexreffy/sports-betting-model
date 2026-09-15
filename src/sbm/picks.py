@@ -2,7 +2,13 @@ from datetime import UTC, datetime
 
 from sbm.config import Settings, get_settings, params_for
 from sbm.mode import Mode
-from sbm.odds import american_to_implied, expected_value, remove_vig_two_way
+from sbm.odds import (
+    american_to_implied,
+    expected_value,
+    home_cover_prob,
+    remove_vig_two_way,
+    total_over_prob,
+)
 from sbm.schema import Game, Market, Pick, Prediction, Side
 
 
@@ -30,6 +36,9 @@ def picks_from_prediction(
             side = Side.HOME if edge_home > 0 else Side.AWAY
             team = game.home_team if side == Side.HOME else game.away_team
             model_line = -pred.predicted_home_margin
+            cover_home = home_cover_prob(
+                pred.predicted_home_margin, game.spread_close, params.margin_sigma
+            )
             out.append(
                 Pick(
                     mode=mode,
@@ -42,9 +51,7 @@ def picks_from_prediction(
                     team_or_side=team,
                     model_line=round(model_line, 2),
                     market_line=game.spread_close,
-                    model_prob=round(
-                        pred.home_win_prob if side == Side.HOME else 1 - pred.home_win_prob, 4
-                    ),
+                    model_prob=round(cover_home if side == Side.HOME else 1.0 - cover_home, 4),
                     edge=round(abs(edge_home), 3),
                     american_odds=settings.juice,
                     placed_at=now,
@@ -55,6 +62,7 @@ def picks_from_prediction(
         edge_over = pred.predicted_total - game.total_close
         if abs(edge_over) >= settings.total_edge_points:
             side = Side.OVER if edge_over > 0 else Side.UNDER
+            over_p = total_over_prob(pred.predicted_total, game.total_close, params.total_sigma)
             out.append(
                 Pick(
                     mode=mode,
@@ -67,6 +75,7 @@ def picks_from_prediction(
                     team_or_side=side.value,
                     model_line=round(pred.predicted_total, 2),
                     market_line=game.total_close,
+                    model_prob=round(over_p if side == Side.OVER else 1.0 - over_p, 4),
                     edge=round(abs(edge_over), 3),
                     american_odds=settings.juice,
                     placed_at=now,

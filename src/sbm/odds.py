@@ -55,6 +55,24 @@ def margin_to_win_prob(predicted_home_margin: float, margin_sigma: float = 13.5)
     return normal_cdf(predicted_home_margin / margin_sigma)
 
 
+def home_cover_prob(
+    predicted_home_margin: float, home_spread: float, margin_sigma: float = 13.5
+) -> float:
+    """P(home covers). home_spread is the sportsbook home line (negative = favored)."""
+    if margin_sigma <= 0:
+        raise ValueError("margin_sigma must be positive")
+    return normal_cdf((predicted_home_margin + home_spread) / margin_sigma)
+
+
+def total_over_prob(
+    predicted_total: float, total_line: float, total_sigma: float = 10.5
+) -> float:
+    """P(game goes over the total)."""
+    if total_sigma <= 0:
+        raise ValueError("total_sigma must be positive")
+    return normal_cdf((predicted_total - total_line) / total_sigma)
+
+
 def cover_home_spread(home_margin: float, home_spread: float) -> str:
     """home_spread is the home team's line (negative = home favored)."""
     adj = home_margin + home_spread

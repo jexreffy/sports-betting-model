@@ -53,3 +53,22 @@ def test_fbs_only_and_consensus_line() -> None:
     assert game.spread_close == -2.5
     assert game.total_close == 42.5
     assert game.home_moneyline == -140
+
+
+def test_missing_classification_is_dropped() -> None:
+    games = games_from_cfbd_payloads(
+        [
+            {
+                "id": 9,
+                "season": 2024,
+                "week": 5,
+                "seasonType": "regular",
+                "homeTeam": "Montana",
+                "awayTeam": "Idaho",
+                "homePoints": 21,
+                "awayPoints": 17,
+            }
+        ],
+        [],
+    )
+    assert games == []

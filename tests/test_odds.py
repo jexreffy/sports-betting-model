@@ -6,9 +6,12 @@ from sbm.odds import (
     cover_home_spread,
     cover_total,
     expected_value,
+    home_cover_prob,
+    margin_to_win_prob,
     profit_units,
     remove_vig_two_way,
     settle_pick,
+    total_over_prob,
 )
 from sbm.schema import Game, League, Market, Pick, Side
 
@@ -82,6 +85,14 @@ def test_settle_away_spread():
     result, profit = settle_pick(pick, game)
     assert result == "push"
     assert profit == 0.0
+
+
+def test_cover_prob_is_not_win_prob():
+    win = margin_to_win_prob(7.0, 13.8)
+    cover = home_cover_prob(7.0, -3.0, 13.8)
+    assert cover != win
+    assert cover > 0.5
+    assert abs(total_over_prob(45.0, 45.0, 10.5) - 0.5) < 1e-9
 
 
 def test_zero_odds_rejected():

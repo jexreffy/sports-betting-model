@@ -44,14 +44,14 @@ def ingest(
 
         typer.echo(f"Ingesting NFL {seasons[0]}-{seasons[-1]}…")
         games = download_nfl_games(seasons)
-        path = save_games(League.NFL, games)
+        path = save_games(League.NFL, games, replace_seasons=set(seasons))
         typer.echo(f"Wrote {len(games)} NFL games to {path}")
     if League.CFB in targets:
         from sbm.data.cfb import download_cfb_games
 
         typer.echo(f"Ingesting CFB FBS {seasons[0]}-{seasons[-1]}…")
         games = download_cfb_games(seasons)
-        path = save_games(League.CFB, games)
+        path = save_games(League.CFB, games, replace_seasons=set(seasons))
         typer.echo(f"Wrote {len(games)} CFB games to {path}")
 
 
@@ -62,17 +62,18 @@ def simulate_backtest(
     league: Annotated[str | None, typer.Option()] = None,
     report_dir: Annotated[Path, typer.Option()] = Path("reports/sample"),
 ) -> None:
-    """Walk-forward history: warmup ratings, paper search+holdout, skip 2026."""
+    """Walk-forward history into the historical ledger. Does not touch this week's paper book."""
     from sbm.backtest import apply_backtest_to_ledger
     from sbm.data.store import load_games
     from sbm.paper import Ledger
+    from sbm.paths import historical_ledger_path
     from sbm.reports import write_bankroll_chart, write_picks_csv, write_summary_json
 
     lg = _league(league)
     games = load_games(lg)
     if not games:
         raise typer.BadParameter("No games found. Run `sbm ingest` first.")
-    ledger = Ledger(Mode.SIMULATION)
+    ledger = Ledger(Mode.SIMULATION, path=historical_ledger_path(Mode.SIMULATION))
     if ledger.path.exists():
         ledger.path.unlink()
     apply_backtest_to_ledger(games, ledger, start_season=start, end_season=end)
@@ -147,11 +148,14 @@ def live_settle() -> None:
 def serve(
     host: Annotated[str, typer.Option()] = "127.0.0.1",
     port: Annotated[int, typer.Option()] = 8000,
+    reload: Annotated[bool, typer.Option("--reload")] = False,
 ) -> None:
-    """Local dashboard."""
+    """Local dashboard. Bind 127.0.0.1 by default; use --reload while editing Python."""
     import uvicorn
 
-    uvicorn.run("sbm.web.app:app", host=host, port=port, reload=True)
+    if host in {"0.0.0.0", "::"}:
+        typer.echo("Warning: dashboard has no auth and exposes paper ledgers on all interfaces.")
+    uvicorn.run("sbm.web.app:app", host=host, port=port, reload=reload)
 
 
 def _run_week_picks(mode: Mode, season: int | None, week: int | None, league: str | None) -> None:

@@ -22,13 +22,34 @@ class ScoringBook:
             self.defense[team] *= self.params.revert
         self._seen_seasons[team] = season
 
+    def _off_for_season(self, team: str, season: int) -> float:
+        last = self._seen_seasons.get(team)
+        current = self.off[team]
+        if last is not None and season > last:
+            return current * self.params.revert
+        return current
+
+    def _def_for_season(self, team: str, season: int) -> float:
+        last = self._seen_seasons.get(team)
+        current = self.defense[team]
+        if last is not None and season > last:
+            return current * self.params.revert
+        return current
+
     def predicted_scores(self, game: Game) -> tuple[float, float]:
-        self.maybe_revert(game.home_team, game.season)
-        self.maybe_revert(game.away_team, game.season)
         avg = self.params.league_avg_total / 2.0
         hfa = 0.0 if game.is_neutral else self.params.hfa_points / 2.0
-        home = avg + self.off[game.home_team] - self.defense[game.away_team] + hfa
-        away = avg + self.off[game.away_team] - self.defense[game.home_team]
+        home = (
+            avg
+            + self._off_for_season(game.home_team, game.season)
+            - self._def_for_season(game.away_team, game.season)
+            + hfa
+        )
+        away = (
+            avg
+            + self._off_for_season(game.away_team, game.season)
+            - self._def_for_season(game.home_team, game.season)
+        )
         return home, away
 
     def predicted_total(self, game: Game) -> float:
@@ -38,6 +59,8 @@ class ScoringBook:
     def update(self, game: Game) -> None:
         if not game.is_final or game.home_score is None or game.away_score is None:
             return
+        self.maybe_revert(game.home_team, game.season)
+        self.maybe_revert(game.away_team, game.season)
         pred_home, pred_away = self.predicted_scores(game)
         home_err = game.home_score - pred_home
         away_err = game.away_score - pred_away

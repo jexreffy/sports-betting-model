@@ -1,5 +1,6 @@
-from sbm.config import Settings
+from sbm.config import NFL_PARAMS, Settings
 from sbm.mode import Mode
+from sbm.odds import home_cover_prob, margin_to_win_prob
 from sbm.picks import picks_from_prediction
 from sbm.schema import Game, League, Market, Prediction, Side
 
@@ -36,7 +37,12 @@ def test_spread_and_total_follow_model_edge() -> None:
     by_market = {p.market: p for p in picks}
     assert by_market[Market.SPREAD].side == Side.HOME
     assert by_market[Market.SPREAD].team_or_side == "KC"
+    cover = home_cover_prob(7.0, -3.0, NFL_PARAMS.margin_sigma)
+    win = margin_to_win_prob(7.0, NFL_PARAMS.margin_sigma)
+    assert by_market[Market.SPREAD].model_prob == round(cover, 4)
+    assert by_market[Market.SPREAD].model_prob != round(win, 4)
     assert by_market[Market.TOTAL].side == Side.UNDER
+    assert by_market[Market.TOTAL].model_prob is not None
     assert by_market[Market.MONEYLINE].side == Side.HOME
 
 

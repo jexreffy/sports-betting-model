@@ -149,6 +149,7 @@ def apply_backtest_to_ledger(
 ) -> int:
     if ledger.mode != Mode.SIMULATION:
         raise ValueError("Historical backtests may only write the simulation ledger")
+    # Caller must pass the historical ledger path, not the current-week paper book.
     picks, _ = walk_forward(
         games,
         mode=Mode.SIMULATION,

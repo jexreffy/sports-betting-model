@@ -26,5 +26,10 @@ def ledger_path(mode: Mode) -> Path:
     return mode_dir(mode) / "ledger.jsonl"
 
 
+def historical_ledger_path(mode: Mode) -> Path:
+    """Walk-forward P&L only. Never the current-week paper book."""
+    return mode_dir(mode) / "historical_ledger.jsonl"
+
+
 def games_path(league: str) -> Path:
     return raw_dir() / f"{league}_games.jsonl"

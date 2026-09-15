@@ -14,6 +14,12 @@ def test_help() -> None:
     assert "live" in result.stdout
 
 
+def test_serve_help_documents_reload() -> None:
+    result = runner.invoke(app, ["serve", "--help"])
+    assert result.exit_code == 0
+    assert "--reload" in result.stdout
+
+
 def test_bake_sample_writes_reports(tmp_path: Path) -> None:
     report_dir = tmp_path / "reports"
     result = runner.invoke(app, ["simulate", "bake-sample", "--report-dir", str(report_dir)])

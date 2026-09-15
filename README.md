@@ -8,7 +8,7 @@ This repo is a skills demo and a 2026 lab. Real-money bets stay outside the app.
 
 | Mode | What it is | Ledger |
 | --- | --- | --- |
-| **Simulation** | Historical walk-forward replay, plus fake bets on **real current games** | `data/simulation/` |
+| **Simulation** | Historical walk-forward replay, plus fake bets on **real current games** | `data/simulation/ledger.jsonl` (this week) and `historical_ledger.jsonl` (backtest) |
 | **Live** | The product you would open in 2027 (labeled *practice* until you flip a flag) | `data/live/` |
 
 Ratings and EV math are shared. Ledgers cannot write across modes.
@@ -57,7 +57,7 @@ sbm ingest --league cfb --start 2015 --end 2026   # needs CFBD_API_KEY
 # Frozen toy artifacts (also used in this README)
 sbm simulate bake-sample
 
-# Honest walk-forward on ingested history → simulation ledger
+# Honest walk-forward → data/simulation/historical_ledger.jsonl (not this week's book)
 sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
 
 # Paper this week's real games
@@ -79,10 +79,13 @@ Odds today come from ingested nflverse/CFBD closes via a `LineProvider` protocol
 ## Dashboard
 
 ```bash
-sbm serve
+sbm serve                 # 127.0.0.1:8000, no reload
+sbm serve --reload        # pick up Python edits
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Use the **simulation | live** switch. Each mode shows its own weekly board, bankroll curve, and calibration-ish Brier.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Use the **simulation | live** switch. Each mode shows its own weekly board, bankroll curve, and Brier vs cover/over (not raw win probability).
+
+Ingest of a season range **merges** into the existing JSONL: only those seasons are replaced. A 2026-only pull will not delete 2015–2025.
 
 ## Sample backtest (toy league)
 
