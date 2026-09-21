@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from sbm.odds import cover_home_spread, cover_total, profit_units
 from sbm.paths import journal_tickets_path, live_ledger_legacy_path
+from sbm.predictions import kickoff_in_chicago, team_key
 from sbm.schema import (
     Game,
     JournalYearStats,
@@ -18,6 +19,7 @@ from sbm.schema import (
     Ticket,
     TicketKind,
 )
+from sbm.teams import TeamFace, abbrev, team_face
 
 
 def _status_label(result: str | None) -> str:
@@ -28,8 +30,196 @@ def _status_label(result: str | None) -> str:
     if result == "loss":
         return "miss"
     if result == "cashout":
-        return "cashed early"
+        return "chased"
     return result
+
+
+def _token_matches_team(league: League, team: str, token: str) -> bool:
+    raw = token.strip()
+    if not raw or raw.lower() in {"over", "under"}:
+        return False
+    if team_key(league, team) == team_key(league, raw):
+        return True
+    code = abbrev(league, team).upper()
+    tok = raw.upper()
+    if code == tok or team.strip().upper() == tok:
+        return True
+    return len(code) >= 3 and len(tok) >= 3 and (code.startswith(tok) or tok.startswith(code))
+
+
+def _game_has_token(game: Game, token: str) -> bool:
+    return _token_matches_team(game.league, game.home_team, token) or _token_matches_team(
+        game.league, game.away_team, token
+    )
+
+
+def _pair_matches(game: Game, left: str, right: str) -> bool:
+    home_left = _token_matches_team(game.league, game.home_team, left)
+    away_left = _token_matches_team(game.league, game.away_team, left)
+    home_right = _token_matches_team(game.league, game.home_team, right)
+    away_right = _token_matches_team(game.league, game.away_team, right)
+    return (home_left and away_right) or (away_left and home_right)
+
+
+def resolve_leg_game(leg: Leg, games: list[Game]) -> str | None:
+    """Game this leg is about. Stored ids win. Otherwise match the two teams.
+
+    The logged week picks the meeting when they play more than once. A week that
+    matches nothing still links when the season has only one game between them.
+    """
+    if leg.game_id:
+        return leg.game_id
+    left = (leg.team_or_side or "").strip()
+    right = (leg.opponent or "").strip()
+    if not left or not right:
+        return None
+    season_games = [
+        game
+        for game in games
+        if game.league == leg.league
+        and game.season == leg.season
+        and _pair_matches(game, left, right)
+    ]
+    week_hits = [game for game in season_games if game.week == leg.week]
+    if len(week_hits) == 1:
+        return week_hits[0].game_id
+    if len(week_hits) > 1:
+        return None
+    if len(season_games) == 1:
+        return season_games[0].game_id
+    return None
+
+
+def link_ticket_legs(legs: list[Leg], games: list[Game]) -> list[str | None]:
+    """Resolve every leg. A prop uses a sibling leg's game when that game includes its opponent."""
+    linked = [resolve_leg_game(leg, games) for leg in legs]
+    by_id = {game.game_id: game for game in games}
+    for index, leg in enumerate(legs):
+        if linked[index]:
+            continue
+        token = (leg.opponent or "").strip()
+        if not token:
+            continue
+        sibling_ids = {
+            game_id
+            for game_id in linked
+            if game_id
+            and (game := by_id.get(game_id)) is not None
+            and _game_has_token(game, token)
+        }
+        if len(sibling_ids) == 1:
+            linked[index] = sibling_ids.pop()
+    return linked
+
+
+def slate_bounds(moment: datetime) -> tuple[date, date]:
+    """Tuesday–Monday window that contains this local moment."""
+    day = moment.date()
+    start = day - timedelta(days=(day.weekday() - 1) % 7)
+    return start, start + timedelta(days=6)
+
+
+def format_slate(start: date, end: date) -> str:
+    return f"{start:%a %b} {start.day} – {end:%a %b} {end.day}"
+
+
+def slate_for_game(game: Game) -> tuple[date, date] | None:
+    local = kickoff_in_chicago(game.kickoff, game.league)
+    if local is None:
+        return None
+    return slate_bounds(local)
+
+
+def _empty_marks() -> dict[str, str | None]:
+    return {
+        "side_logo_url": None,
+        "side_logo_mark": None,
+        "side_color": None,
+        "opp_logo_url": None,
+        "opp_logo_mark": None,
+        "opp_color": None,
+        "mate_logo_url": None,
+        "mate_logo_mark": None,
+    }
+
+
+def _mark_fields(face: TeamFace | None, prefix: str) -> dict[str, str | None]:
+    if face is None:
+        return {
+            f"{prefix}_logo_url": None,
+            f"{prefix}_logo_mark": None,
+            f"{prefix}_color": None,
+        }
+    return {
+        f"{prefix}_logo_url": face.logo_url,
+        f"{prefix}_logo_mark": face.logo_mark,
+        f"{prefix}_color": face.color,
+    }
+
+
+def leg_club_marks(leg: Leg, game: Game | None) -> dict[str, str | None]:
+    """Logos for the club on the slip, its opponent, and the other club on a prop."""
+    marks = _empty_marks()
+    if game is None:
+        return marks
+    home = team_face(game.league, game.home_team, game.home_conference)
+    away = team_face(game.league, game.away_team, game.away_conference)
+    side = (leg.team_or_side or "").strip()
+    opponent = (leg.opponent or "").strip()
+    if _token_matches_team(game.league, game.home_team, side):
+        chosen, other = home, away
+    elif _token_matches_team(game.league, game.away_team, side):
+        chosen, other = away, home
+    else:
+        chosen = None
+        if _token_matches_team(game.league, game.home_team, opponent):
+            other = home
+            mate = away
+        elif _token_matches_team(game.league, game.away_team, opponent):
+            other = away
+            mate = home
+        else:
+            other = None
+            mate = None
+        marks.update(_mark_fields(other, "opp"))
+        marks["mate_logo_url"] = None if mate is None else mate.logo_url
+        marks["mate_logo_mark"] = None if mate is None else mate.logo_mark
+        return marks
+    marks.update(_mark_fields(chosen, "side"))
+    marks.update(_mark_fields(other, "opp"))
+    return marks
+
+
+def present_ticket_legs(tickets: list[dict], games: list[Game]) -> list[dict]:
+    """Attach the linked game, its Tuesday–Monday window, and club marks.
+
+    The logged week number stays on the ticket. The window comes from kickoff,
+    so NFL and CFB share a week when the games fall on the same dates.
+    """
+    by_id = {game.game_id: game for game in games}
+    windows: dict[str, str] = {}
+    for ticket in tickets:
+        legs = [Leg.model_validate(leg) for leg in ticket["legs"]]
+        linked = link_ticket_legs(legs, games)
+        keys: set[str] = set()
+        label = None
+        for raw, leg, game_id in zip(ticket["legs"], legs, linked, strict=True):
+            raw["link_game_id"] = game_id
+            game = by_id.get(game_id) if game_id else None
+            window = slate_for_game(game) if game is not None else None
+            if window is None:
+                raw["slate_key"] = None
+                raw["slate_label"] = None
+            else:
+                raw["slate_key"] = window[0].isoformat()
+                raw["slate_label"] = format_slate(*window)
+                keys.add(raw["slate_key"])
+                label = raw["slate_label"]
+                windows[raw["slate_key"]] = raw["slate_label"]
+            raw.update(leg_club_marks(leg, game))
+        ticket["slate_key"] = " ".join(sorted(keys))
+        ticket["slate_label"] = label if len(keys) == 1 else None
+    return [{"key": key, "label": windows[key]} for key in sorted(windows)]
 
 
 def settle_leg(leg: Leg, game: Game) -> str:

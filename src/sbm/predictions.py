@@ -41,8 +41,8 @@ CHICAGO = ZoneInfo("America/Chicago")
 EASTERN = ZoneInfo("America/New_York")
 
 
-def format_kickoff_cdt(kickoff: datetime | None, league: League | None = None) -> str | None:
-    """Weekday and local kickoff in America/Chicago (CDT or CST)."""
+def kickoff_in_chicago(kickoff: datetime | None, league: League | None = None) -> datetime | None:
+    """Kickoff in America/Chicago. NFL times tagged UTC are Eastern wall clock."""
     if kickoff is None:
         return None
     if kickoff.tzinfo is None:
@@ -53,7 +53,14 @@ def format_kickoff_cdt(kickoff: datetime | None, league: League | None = None) -
         aware = kickoff.replace(tzinfo=EASTERN)
     else:
         aware = kickoff
-    local = aware.astimezone(CHICAGO)
+    return aware.astimezone(CHICAGO)
+
+
+def format_kickoff_cdt(kickoff: datetime | None, league: League | None = None) -> str | None:
+    """Weekday and local kickoff in America/Chicago (CDT or CST)."""
+    local = kickoff_in_chicago(kickoff, league)
+    if local is None:
+        return None
     hour = local.strftime("%I").lstrip("0") or "0"
     return f"{local:%a} {hour}:{local:%M %p %Z}"
 
@@ -258,6 +265,7 @@ def sync_actuals(book: SeasonPredictions, games: list[Game]) -> SeasonPrediction
                             "leftover": leftover,
                             "predicted_winner": row.predicted_winner,
                             "kickoff": game.kickoff,
+                            "week": game.week,
                         }
                     )
                 )

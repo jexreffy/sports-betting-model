@@ -104,6 +104,10 @@ def test_sync_does_not_overwrite_predictions(
     row = next(g for t in synced.teams if t.team == "BUF" for g in t.games)
     assert row.predicted_winner == "BUF"
     assert row.actual_winner == "KC"
+    shifted = sync_actuals(book, [final.model_copy(update={"week": 0})])
+    shifted_row = next(g for t in shifted.teams if t.team == "BUF" for g in t.games)
+    assert shifted_row.week == 0
+    assert shifted_row.predicted_winner == "BUF"
 
 
 def test_heatmap_reconsider_when_behind_take(

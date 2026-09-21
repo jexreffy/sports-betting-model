@@ -45,7 +45,37 @@ def test_cards_group_picks_under_matchup() -> None:
     assert ranked[0]["home_rank"] == "You: 4 / Model: 2"
     assert ranked[0]["away_rank"] == "You: 11 / Model: 1"
     spread = next(m for m in card["markets"] if m["name"] == "spread")
+    assert spread["market"] == "KC -14.0"
+    assert spread["model"] is None or spread["model"].startswith(("KC -", "BUF -", "Pick'em"))
+    assert card["model_context"].split(" · ")[0].startswith("Model ")
+    assert " +" not in card["model_context"]
     assert {opt["label"] for opt in spread["wager_options"]} == {"BUF", "KC"}
+    dog = Game(
+        game_id="g-dog",
+        league=League.NFL,
+        season=2024,
+        week=5,
+        home_team="KC",
+        away_team="BUF",
+        spread_close=3.5,
+        total_close=47.0,
+    )
+    dog_cards, _ = game_cards([dog], Mode.SIMULATION)
+    dog_spread = next(m for m in dog_cards[0]["markets"] if m["name"] == "spread")
+    assert dog_spread["market"] == "BUF -3.5"
+    pickem = Game(
+        game_id="g-pk",
+        league=League.NFL,
+        season=2024,
+        week=5,
+        home_team="KC",
+        away_team="BUF",
+        spread_close=0.0,
+        total_close=47.0,
+    )
+    pk_cards, _ = game_cards([pickem], Mode.SIMULATION)
+    pk_spread = next(m for m in pk_cards[0]["markets"] if m["name"] == "spread")
+    assert pk_spread["market"] == "Pick'em"
     names = [m["name"] for m in card["markets"]]
     assert names == ["spread", "total", "moneyline"]
     assert "model_ticket" in card["markets"][0]

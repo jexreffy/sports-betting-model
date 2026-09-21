@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -5,9 +6,14 @@ import pytest
 from sbm.journal import (
     Journal,
     combine_leg_results,
+    format_slate,
+    link_ticket_legs,
     migrate_live_ledger,
+    present_ticket_legs,
     profit_dollars_for,
+    resolve_leg_game,
     settle_leg,
+    slate_bounds,
     ticket_from_live_payload,
 )
 from sbm.schema import Game, League, Leg, Market, Side, Ticket, TicketKind
@@ -74,6 +80,7 @@ def test_cashout_is_sticky(tmp_path: Path) -> None:
     assert n == 0
     assert book.get("t1").result == "cashout"
     assert book.get("t1").profit_dollars == 3.09
+    assert book.rows_for_year(2026)[0]["status"] == "chased"
 
 
 def test_parlay_all_win_one_loss_push() -> None:
@@ -214,6 +221,183 @@ def test_migrate_does_not_touch_simulation(tmp_path: Path) -> None:
     assert added == 1
     assert (tmp_path / "simulation").exists() is False
     assert Journal(path=journal_path).load()[0].result == "win"
+
+
+def test_resolve_leg_game_from_teams_when_id_is_missing() -> None:
+    games = [
+        Game(
+            game_id="2026_01_HOU_BUF",
+            league=League.NFL,
+            season=2026,
+            week=1,
+            home_team="BUF",
+            away_team="HOU",
+        ),
+        Game(
+            game_id="cfb-ou-mich",
+            league=League.CFB,
+            season=2026,
+            week=1,
+            home_team="Michigan",
+            away_team="Oklahoma",
+        ),
+        Game(
+            game_id="cfb-iowa-mich",
+            league=League.CFB,
+            season=2026,
+            week=4,
+            home_team="Michigan",
+            away_team="Iowa",
+        ),
+        Game(
+            game_id="2026_02_DET_BUF",
+            league=League.NFL,
+            season=2026,
+            week=2,
+            home_team="BUF",
+            away_team="DET",
+        ),
+        Game(
+            game_id="2026_01_NO_DET",
+            league=League.NFL,
+            season=2026,
+            week=1,
+            home_team="DET",
+            away_team="NO",
+        ),
+        Game(
+            game_id="2026_02_SEA_ARI",
+            league=League.NFL,
+            season=2026,
+            week=2,
+            home_team="ARI",
+            away_team="SEA",
+        ),
+        Game(
+            game_id="2026_09_ARI_SEA",
+            league=League.NFL,
+            season=2026,
+            week=9,
+            home_team="SEA",
+            away_team="ARI",
+        ),
+    ]
+    assert resolve_leg_game(_leg(game_id=None, team_or_side="HOU", opponent="BUF"), games) == (
+        "2026_01_HOU_BUF"
+    )
+    assert (
+        resolve_leg_game(
+            _leg(
+                league=League.CFB,
+                game_id=None,
+                team_or_side="OU",
+                opponent="MICH",
+            ),
+            games,
+        )
+        == "cfb-ou-mich"
+    )
+    assert (
+        resolve_leg_game(
+            _leg(
+                league=League.CFB,
+                week=4,
+                game_id=None,
+                team_or_side="IOWA",
+                opponent="MICH",
+            ),
+            games,
+        )
+        == "cfb-iowa-mich"
+    )
+    bills = _leg(game_id=None, team_or_side="BUF", opponent="DET")
+    assert resolve_leg_game(bills, games) == "2026_02_DET_BUF"
+    prop = _leg(
+        game_id=None,
+        team_or_side="Josh Allen Anytime TD Over 0.5",
+        opponent="DET",
+        market=None,
+        side=None,
+    )
+    assert resolve_leg_game(prop, games) is None
+    assert link_ticket_legs([bills, prop], games) == ["2026_02_DET_BUF", "2026_02_DET_BUF"]
+    rematch = _leg(game_id=None, team_or_side="SEA", opponent="ARI", week=3)
+    assert resolve_leg_game(rematch, games) is None
+    assert resolve_leg_game(_leg(game_id="stored"), games) == "stored"
+    assert resolve_leg_game(_leg(game_id=None, team_or_side="KC", opponent="NO"), games) is None
+
+
+def test_slate_bounds_run_tuesday_through_monday() -> None:
+    start, end = slate_bounds(datetime(2026, 9, 17, 19, 15))
+    assert (start, end) == (datetime(2026, 9, 15).date(), datetime(2026, 9, 21).date())
+    monday, monday_end = slate_bounds(datetime(2026, 9, 21, 19, 15))
+    assert (monday, monday_end) == (start, end)
+    assert format_slate(start, end) == "Tue Sep 15 – Mon Sep 21"
+
+
+def test_journal_week_follows_kickoff_not_the_logged_number() -> None:
+    games = [
+        Game(
+            game_id="2026_02_DET_BUF",
+            league=League.NFL,
+            season=2026,
+            week=2,
+            home_team="BUF",
+            away_team="DET",
+            kickoff=datetime(2026, 9, 17, 19, 15, tzinfo=UTC),
+        ),
+        Game(
+            game_id="cfb-ou-mich",
+            league=League.CFB,
+            season=2026,
+            week=2,
+            home_team="Michigan",
+            away_team="Oklahoma",
+            kickoff=datetime(2026, 9, 12, 16, 0, tzinfo=UTC),
+        ),
+    ]
+    tickets = [
+        {
+            "legs": [
+                {
+                    "league": "nfl",
+                    "season": 2026,
+                    "week": 1,
+                    "team_or_side": "BUF",
+                    "opponent": "DET",
+                    "market": "moneyline",
+                }
+            ]
+        },
+        {
+            "legs": [
+                {
+                    "league": "cfb",
+                    "season": 2026,
+                    "week": 1,
+                    "team_or_side": "OU",
+                    "opponent": "MICH",
+                    "market": "spread",
+                    "market_line": -4.5,
+                }
+            ]
+        },
+    ]
+    weeks = present_ticket_legs(tickets, games)
+    bills = tickets[0]["legs"][0]
+    sooners = tickets[1]["legs"][0]
+    assert bills["slate_label"] == "Tue Sep 15 – Mon Sep 21"
+    assert sooners["slate_label"] == "Tue Sep 8 – Mon Sep 14"
+    assert bills["slate_key"] != sooners["slate_key"]
+    assert [week["label"] for week in weeks] == [
+        "Tue Sep 8 – Mon Sep 14",
+        "Tue Sep 15 – Mon Sep 21",
+    ]
+    assert "buf.png" in (bills["side_logo_url"] or "")
+    assert bills["side_color"] == "#00338D"
+    assert sooners["side_color"] == "#841617"
+    assert sooners["opp_logo_mark"] == "❌"
+    assert tickets[0]["slate_label"] == bills["slate_label"]
 
 
 def test_open_novig_seeds_can_settle() -> None:

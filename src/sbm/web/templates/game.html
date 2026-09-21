@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SBM — {{ active }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  {% from "_club_name.html" import club_name %}
+  <header>
+    <div class="brand">SBM · NFL + CFB</div>
+    <nav class="switcher" aria-label="Book">
+      {% for item in nav %}
+      <a class="{{ 'active-' + item.key if item.key == active else '' }}" href="{{ item.href }}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+  <main>
+    <div class="banner">{{ banner }}</div>
+    <form class="pull-form" method="get" action="/game">
+      <label>League
+        <select name="league">
+          <option value="nfl" {% if league == 'nfl' %}selected{% endif %}>nfl</option>
+          <option value="cfb" {% if league == 'cfb' %}selected{% endif %}>cfb</option>
+        </select>
+      </label>
+      <label>Team
+        <input name="team_a" value="{{ team_a }}" placeholder="Bills, BUF…" autocomplete="off" required />
+      </label>
+      <label>Team
+        <input name="team_b" value="{{ team_b }}" placeholder="Chiefs, KC…" autocomplete="off" required />
+      </label>
+      <button type="submit">Pull game</button>
+    </form>
+    {% if error %}
+    <p class="empty">{{ error }}</p>
+    {% elif not ready %}
+    <p class="empty">Pull two teams. This page does not list the slate.</p>
+    {% else %}
+    <section class="panel matchup-block">
+      <h2 class="matchup-head">
+        <span class="named-team"{% if team_a_color %} style="--team-color: {{ team_a_color }}"{% endif %}>
+          {% if team_a_logo_mark %}<span class="team-mark team-logo" aria-hidden="true">{{ team_a_logo_mark }}</span>{% elif team_a_logo_url %}<img class="team-logo" src="{{ team_a_logo_url }}" alt="" width="32" height="32" />{% endif %}
+          {{ club_name(team_a_place, team_a_nickname, team_a_name) }}
+        </span>
+        <span class="vs">vs</span>
+        <span class="named-team"{% if team_b_color %} style="--team-color: {{ team_b_color }}"{% endif %}>
+          {% if team_b_logo_mark %}<span class="team-mark team-logo" aria-hidden="true">{{ team_b_logo_mark }}</span>{% elif team_b_logo_url %}<img class="team-logo" src="{{ team_b_logo_url }}" alt="" width="32" height="32" />{% endif %}
+          {{ club_name(team_b_place, team_b_nickname, team_b_name) }}
+        </span>
+        <span class="slate-label">as of {{ as_of_label }}</span>
+      </h2>
+      <p class="muted">Ingested unit stats and three model prices. No rest, venue, or market on this block.</p>
+      <table class="stat-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="colored"{% if team_a_color %} style="--team-color: {{ team_a_color }}"{% endif %}>
+              <span class="stat-head">{% if team_a_logo_mark %}<span class="team-mark" aria-hidden="true">{{ team_a_logo_mark }}</span>{% elif team_a_logo_url %}<img class="chip-logo" src="{{ team_a_logo_url }}" alt="" width="18" height="18" />{% endif %}{{ team_a_abbrev }}</span>
+            </th>
+            <th class="colored"{% if team_b_color %} style="--team-color: {{ team_b_color }}"{% endif %}>
+              <span class="stat-head">{% if team_b_logo_mark %}<span class="team-mark" aria-hidden="true">{{ team_b_logo_mark }}</span>{% elif team_b_logo_url %}<img class="chip-logo" src="{{ team_b_logo_url }}" alt="" width="18" height="18" />{% endif %}{{ team_b_abbrev }}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats %}
+          <tr>
+            <th>{{ row.label }}</th>
+            <td>{{ row.left }}</td>
+            <td>{{ row.right }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="site-grid">
+        {% for site in sites %}
+        <article class="site-card{% if site.neutral %} is-neutral{% endif %}"{% if site.color %} style="--team-color: {{ site.color }}{% if site.color_b %}; --team-color-b: {{ site.color_b }}{% endif %}"{% endif %}>
+          <h3>
+            {% if site.logo_mark %}<span class="team-mark" aria-hidden="true">{{ site.logo_mark }}</span>{% elif site.logo_url %}<img class="chip-logo" src="{{ site.logo_url }}" alt="" width="18" height="18" />{% endif %}
+            {% if site.neutral %}{% if site.logo_mark_b %}<span class="team-mark" aria-hidden="true">{{ site.logo_mark_b }}</span>{% elif site.logo_url_b %}<img class="chip-logo" src="{{ site.logo_url_b }}" alt="" width="18" height="18" />{% endif %}{% endif %}
+            {{ site.label }}
+          </h3>
+          <p><em>Spread</em> {{ site.spread }}</p>
+          <p><em>Total</em> {{ site.total }}</p>
+          <p><em>Moneyline</em> {{ site.moneyline }}</p>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% if meetings %}
+    <section class="meeting-list">
+      {% for meeting in meetings %}
+      {% include "real_game.html" %}
+      {% endfor %}
+    </section>
+    {% else %}
+    <p class="empty">No meeting between these teams in this season.</p>
+    {% endif %}
+    {% endif %}
+  </main>
+  {% if meetings %}
+  {% include "ticket_modal.html" %}
+  <script>
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest(".wager-open");
+      if (!btn) return;
+      event.preventDefault();
+      const line = btn.getAttribute("data-line");
+      const american = btn.getAttribute("data-american");
+      window.openTicketModal({
+        sportsbook: "Novig",
+        league: btn.getAttribute("data-league"),
+        season: btn.getAttribute("data-season"),
+        week: btn.getAttribute("data-week"),
+        market: btn.getAttribute("data-market"),
+        side: btn.getAttribute("data-side"),
+        team_or_side: btn.getAttribute("data-team"),
+        opponent: btn.getAttribute("data-opponent"),
+        market_line: line === "" ? null : line,
+        american_odds: american === "" ? null : american,
+        game_id: btn.getAttribute("data-game"),
+      });
+    });
+    const opened = document.querySelector(".real-game.is-opened");
+    if (opened) opened.scrollIntoView({ block: "start" });
+  </script>
+  {% endif %}
+</body>
+</html>

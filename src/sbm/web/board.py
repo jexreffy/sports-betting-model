@@ -8,7 +8,7 @@ from sbm.mode import Mode
 from sbm.models.engine import ModelEngine
 from sbm.schema import Game, League, Pick, Prediction
 from sbm.teams import abbrev_side, cfb_p4_conference, team_face
-from sbm.units import UnitBook, home_adjustment
+from sbm.units import UnitBook, favorite_side, home_adjustment
 
 INTERNATIONAL_VENUE_MARKERS = (
     "wembley",
@@ -45,12 +45,14 @@ def is_international_venue(venue: str | None) -> bool:
     return any(marker in hay for marker in INTERNATIONAL_VENUE_MARKERS)
 
 
-def _fmt_spread(line: float | None) -> str | None:
-    if line is None:
+def _favorite_spread(home_margin: float | None, game: Game) -> str | None:
+    """Favorite and the points they lay. Stored lines stay home-perspective."""
+    if home_margin is None:
         return None
-    if abs(line) < 1e-9:
-        return "pk"
-    return f"{line:+.1f}"
+    favorite, points = favorite_side(home_margin, game.away_team, game.home_team)
+    if favorite is None:
+        return "Pick'em"
+    return f"{team_face(game.league, favorite).abbrev} -{points:.1f}"
 
 
 def honesty_flags(game: Game, pick: Pick | None) -> dict[str, bool]:
@@ -300,19 +302,22 @@ def _card(
     model_ranks: dict[str, dict[str, int]] | None = None,
     you_ranks: dict[tuple[str, str], int] | None = None,
 ) -> dict:
-    model_home_line = -pred.predicted_home_margin
     away_face = team_face(game.league, game.away_team, game.away_conference)
     home_face = team_face(game.league, game.home_team, game.home_conference)
     away_code = away_face.abbrev
     home_code = home_face.abbrev
+    market_spread = _favorite_spread(
+        None if game.spread_close is None else -game.spread_close,
+        game,
+    )
     markets = [
         _market_block(
             game,
             "spread",
             "Spread",
-            _fmt_spread(model_home_line),
-            _fmt_spread(game.spread_close),
-            f"{home_code} {_fmt_spread(game.spread_close) or '—'}",
+            _favorite_spread(pred.predicted_home_margin, game),
+            market_spread,
+            market_spread or "—",
             model_picks,
             predicted_winner,
         ),
@@ -367,8 +372,8 @@ def _card(
     else:
         neutral = engine.elo.neutral_home_margin(game)
         _points, edge = home_adjustment(game, units, engine.params)
-    full = _fmt_spread(-pred.predicted_home_margin)
-    neutral_text = _fmt_spread(-neutral)
+    full = _favorite_spread(pred.predicted_home_margin, game)
+    neutral_text = _favorite_spread(neutral, game)
     model_context = f"Model {full} · Neutral {neutral_text}"
     if edge:
         model_context = f"{model_context} · {edge}"
@@ -387,6 +392,10 @@ def _card(
         "home_team": game.home_team,
         "away_display": away_face.display_name,
         "home_display": home_face.display_name,
+        "away_place": away_face.place,
+        "away_nickname": away_face.nickname,
+        "home_place": home_face.place,
+        "home_nickname": home_face.nickname,
         "away_abbrev": away_code,
         "home_abbrev": home_code,
         "model_context": model_context,

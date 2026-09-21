@@ -385,3 +385,299 @@ def test_predictions_page_cfb_banner_and_abbrevs(
     assert ">MICH<" not in html
     assert "❌" in html
     assert "Michigan @ Ohio State" not in html
+
+
+def test_game_page_is_empty_until_a_matchup_is_pulled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    page = client.get("/game")
+    assert page.status_code == 200
+    assert b"does not list the slate" in page.content
+    assert b"This week" not in page.content
+    assert b"wager-open" not in page.content
+    assert client.get("/game/missing").status_code == 404
+
+
+def test_game_page_hypothetical_has_three_prices_and_no_log_buttons(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    from sbm.data.store import save_games
+    from sbm.schema import Game, League
+
+    save_games(
+        League.NFL,
+        [
+            Game(
+                game_id="buf-mia",
+                league=League.NFL,
+                season=2026,
+                week=1,
+                home_team="BUF",
+                away_team="MIA",
+            ),
+            Game(
+                game_id="kc-den",
+                league=League.NFL,
+                season=2026,
+                week=1,
+                home_team="KC",
+                away_team="DEN",
+            ),
+        ],
+    )
+    page = client.get("/game", params={"league": "nfl", "team_a": "Bills", "team_b": "Chiefs"})
+    assert page.status_code == 200
+    html = page.text
+    assert "Buffalo Bills at home" in html
+    assert "Kansas City Chiefs at home" in html
+    assert "Neutral field" in html
+    assert "Rush EPA" in html
+    assert "teamlogos/nfl/500/buf.png" in html
+    assert "teamlogos/nfl/500/kc.png" in html
+    assert "--team-color: #00338D" in html
+    assert "--team-color: #E31837" in html
+    assert "is-neutral" in html
+    assert "wager-open" not in html
+    assert "No meeting between these teams" in html
+
+
+def test_game_page_shows_each_same_season_meeting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    from sbm.data.store import save_games
+    from sbm.journal import Journal
+    from sbm.schema import Game, League, Leg, Market, Side, Ticket, TicketKind
+
+    save_games(
+        League.NFL,
+        [
+            Game(
+                game_id="w1",
+                league=League.NFL,
+                season=2026,
+                week=1,
+                home_team="KC",
+                away_team="BUF",
+                home_score=3,
+                away_score=40,
+                spread_close=-3.0,
+                total_close=47.5,
+                home_moneyline=-150,
+                away_moneyline=130,
+                venue="Arrowhead Stadium",
+                home_rest_days=7,
+                away_rest_days=7,
+            ),
+            Game(
+                game_id="w14",
+                league=League.NFL,
+                season=2026,
+                week=14,
+                home_team="BUF",
+                away_team="KC",
+                spread_close=-2.5,
+                total_close=48.0,
+                home_moneyline=-140,
+                away_moneyline=120,
+                venue="Tottenham Hotspur Stadium",
+                home_rest_days=10,
+                away_rest_days=6,
+            ),
+            Game(
+                game_id="old",
+                league=League.NFL,
+                season=2025,
+                week=1,
+                home_team="KC",
+                away_team="BUF",
+                spread_close=-3.0,
+                total_close=44.0,
+                home_moneyline=-150,
+                away_moneyline=130,
+            ),
+        ],
+    )
+    Journal().add(
+        Ticket(
+            ticket_id="t-w1",
+            season=2026,
+            sportsbook="Novig",
+            stake_dollars=5.0,
+            american_odds=-110,
+            kind=TicketKind.STRAIGHT,
+            legs=[
+                Leg(
+                    league=League.NFL,
+                    season=2026,
+                    week=1,
+                    team_or_side="BUF",
+                    opponent="KC",
+                    market=Market.MONEYLINE,
+                    side=Side.AWAY,
+                    game_id="w1",
+                )
+            ],
+        )
+    )
+    page = client.get("/game/w1")
+    assert page.status_code == 200
+    html = page.text
+    assert 'id="game-w1"' in html
+    assert 'id="game-w14"' in html
+    assert "game-old" not in html
+    assert 'data-game="w1"' in html
+    assert 'data-game="w14"' in html
+    assert html.count("wager-open") >= 2
+    assert "Arrowhead Stadium" in html
+    assert "Tottenham Hotspur Stadium" in html
+    assert "Home field" in html
+    assert "International" in html
+    assert 'class="real-game game-card' in html
+    assert "is-opened" in html
+    research = client.get("/research")
+    assert "/game/w14#game-w14" in research.text
+    predictions = client.get("/predictions")
+    assert "/game/w1#game-w1" in predictions.text
+    assert "/game/w14#game-w14" in predictions.text
+    assert "pick-winner" in predictions.text
+    journal = client.get("/journal")
+    assert "/game/w1#game-w1" in journal.text
+
+
+def test_journal_links_a_leg_that_has_no_stored_game_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    from sbm.data.store import save_games
+    from sbm.journal import Journal
+    from sbm.schema import Game, League, Leg, Market, Ticket, TicketKind
+
+    save_games(
+        League.NFL,
+        [
+            Game(
+                game_id="2026_01_HOU_BUF",
+                league=League.NFL,
+                season=2026,
+                week=1,
+                home_team="BUF",
+                away_team="HOU",
+            )
+        ],
+    )
+    save_games(
+        League.CFB,
+        [
+            Game(
+                game_id="cfb-ou-mich",
+                league=League.CFB,
+                season=2026,
+                week=1,
+                home_team="Michigan",
+                away_team="Oklahoma",
+            )
+        ],
+    )
+    Journal().add(
+        Ticket(
+            ticket_id="t-hou",
+            season=2026,
+            sportsbook="Novig",
+            stake_dollars=5.0,
+            american_odds=-110,
+            kind=TicketKind.STRAIGHT,
+            legs=[
+                Leg(
+                    league=League.NFL,
+                    season=2026,
+                    week=1,
+                    team_or_side="HOU",
+                    opponent="BUF",
+                    market=Market.SPREAD,
+                    market_line=1.5,
+                )
+            ],
+        )
+    )
+    Journal().add(
+        Ticket(
+            ticket_id="t-ou",
+            season=2026,
+            sportsbook="Novig",
+            stake_dollars=5.0,
+            american_odds=-110,
+            kind=TicketKind.STRAIGHT,
+            legs=[
+                Leg(
+                    league=League.CFB,
+                    season=2026,
+                    week=1,
+                    team_or_side="OU",
+                    opponent="MICH",
+                    market=Market.SPREAD,
+                    market_line=-4.5,
+                )
+            ],
+        )
+    )
+    page = client.get("/journal")
+    assert page.status_code == 200
+    assert "/game/2026_01_HOU_BUF#game-2026_01_HOU_BUF" in page.text
+    assert "/game/cfb-ou-mich#game-cfb-ou-mich" in page.text
+
+
+def test_journal_week_dropdown_uses_tuesday_monday_dates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import UTC, datetime
+
+    monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    from sbm.data.store import save_games
+    from sbm.journal import Journal
+    from sbm.schema import Game, League, Leg, Market, Ticket, TicketKind
+
+    save_games(
+        League.NFL,
+        [
+            Game(
+                game_id="2026_02_DET_BUF",
+                league=League.NFL,
+                season=2026,
+                week=2,
+                home_team="BUF",
+                away_team="DET",
+                kickoff=datetime(2026, 9, 17, 19, 15, tzinfo=UTC),
+            )
+        ],
+    )
+    Journal().add(
+        Ticket(
+            ticket_id="t-buf",
+            season=2026,
+            sportsbook="Novig",
+            stake_dollars=5.0,
+            american_odds=-110,
+            kind=TicketKind.STRAIGHT,
+            legs=[
+                Leg(
+                    league=League.NFL,
+                    season=2026,
+                    week=1,
+                    team_or_side="BUF",
+                    opponent="DET",
+                    market=Market.MONEYLINE,
+                )
+            ],
+        )
+    )
+    page = client.get("/journal")
+    assert page.status_code == 200
+    html = page.text
+    assert '<select id="filter-week">' in html
+    assert "Tue Sep 15 – Mon Sep 21" in html
+    assert 'value="2026-09-15"' in html
+    assert "teamlogos/nfl/500/buf.png" in html
+    assert "--team-color: #00338D" in html

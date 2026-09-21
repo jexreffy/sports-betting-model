@@ -736,6 +736,8 @@ class TeamFace:
 
     team: str
     display_name: str
+    place: str
+    nickname: str | None
     abbrev: str
     logo_url: str | None
     logo_mark: str | None
@@ -743,9 +745,30 @@ class TeamFace:
     search_text: str
 
 
+def name_lines(league: League, team: str) -> tuple[str, str | None]:
+    """School or city on the first line, nickname on the second."""
+    if _is_ttun(league, team):
+        return "The Team", "Up North"
+    if league == League.NFL:
+        full = display_name(league, team)
+        place, sep, nick = full.rpartition(" ")
+        if not sep:
+            return full, None
+        return place, nick
+    raw = team.strip()
+    nicks = CFB_NICKNAMES.get(_cfb_key(raw), [])
+    if not nicks:
+        return raw, None
+    nickname = nicks[0] if nicks[0][:1].isdigit() else nicks[0].title()
+    if nickname.lower() in raw.lower():
+        return raw, None
+    return raw, nickname
+
+
 def team_face(league: League, team: str, conference: str | None = None) -> TeamFace:
     ttun = _is_ttun(league, team)
-    shown = TTUN_DISPLAY if ttun else display_name(league, team)
+    place, nickname = name_lines(league, team)
+    shown = f"{place} {nickname}" if nickname else place
     code = TTUN_ABBREV if ttun else abbrev(league, team)
     blob = search_blob(league, team)
     if ttun:
@@ -755,6 +778,8 @@ def team_face(league: League, team: str, conference: str | None = None) -> TeamF
     return TeamFace(
         team=team.strip(),
         display_name=shown,
+        place=place,
+        nickname=nickname,
         abbrev=code,
         logo_url=None if ttun else logo_url(league, team),
         logo_mark=TTUN_MARK if ttun else None,
