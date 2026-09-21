@@ -119,6 +119,18 @@ def slate_bounds(moment: datetime) -> tuple[date, date]:
     return start, start + timedelta(days=6)
 
 
+def windows_between(first: datetime, last: datetime) -> list[tuple[date, date]]:
+    """Every Tuesday–Monday window from `first` through `last`, inclusive."""
+    start, _end = slate_bounds(first)
+    last_start, _ = slate_bounds(last)
+    windows: list[tuple[date, date]] = []
+    cursor = start
+    while cursor <= last_start:
+        windows.append((cursor, cursor + timedelta(days=6)))
+        cursor += timedelta(days=7)
+    return windows
+
+
 def format_slate(start: date, end: date) -> str:
     return f"{start:%a %b} {start.day} – {end:%a %b} {end.day}"
 

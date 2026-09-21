@@ -26,10 +26,12 @@ def test_board_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"Research" in research.content
     assert b"Ratings" in research.content
     assert b"Rankings" in research.content
-    assert b"ticket-modal" in research.content
+    assert b"week-select" in research.content
+    assert b"ticket-modal" not in research.content
+    assert b"Model tickets" not in research.content
     live = client.get("/", params={"mode": "live"}, follow_redirects=False)
     assert live.status_code == 307
-    api = client.get("/api/board", params={"mode": "simulation"})
+    api = client.get("/api/board", params={"mode": "simulation", "week": "2026-12-01"})
     assert api.status_code == 200
     assert api.headers.get("cache-control") == "no-store"
     body = api.json()
@@ -37,13 +39,15 @@ def test_board_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert "look_only" not in body
     assert "book" not in body
     assert "curve" not in body
-    assert body["cards"] == []
+    assert body["cards"]
+    assert all(card["kind"] == "slot" for card in body["cards"])
     live_api = client.get("/api/board", params={"mode": "live"})
     assert live_api.status_code == 400
     year = client.get("/api/journal")
     assert year.status_code == 200
     assert year.json()["summary"]["n_tickets"] == 0
-    assert b"ingested" in research.content
+    quiet = client.get("/research", params={"week": "2026-12-08"})
+    assert b"ingested" in quiet.content
     pred = client.get("/predictions")
     assert pred.status_code == 200
     assert b"Predictions" in pred.content
@@ -81,13 +85,13 @@ def test_mark_is_gone_and_does_not_write_paper(
         ],
     )
     board = client.get("/api/board", params={"mode": "simulation"}).json()
-    assert board["cards"]
-    market = next(m for m in board["cards"][0]["markets"] if m["model_ticket"])
+    game_card = next(card for card in board["cards"] if card.get("kind") == "game")
+    market = next(m for m in game_card["markets"] if m["model_ticket"])
     resp = client.post(
         "/api/mark",
         json={
             "mode": "simulation",
-            "game_id": board["cards"][0]["game_id"],
+            "game_id": game_card["game_id"],
             "market": market["name"],
             "column": "gut",
             "skipped": False,
@@ -99,7 +103,7 @@ def test_mark_is_gone_and_does_not_write_paper(
         "/api/unmark",
         json={
             "mode": "simulation",
-            "game_id": board["cards"][0]["game_id"],
+            "game_id": game_card["game_id"],
             "market": market["name"],
             "column": "gut",
         },
@@ -109,7 +113,8 @@ def test_mark_is_gone_and_does_not_write_paper(
 
     assert not ledger_path(Mode.SIMULATION).exists()
     page = client.get("/research")
-    assert b"wager-open" in page.content
+    assert b"wager-open" not in page.content
+    assert b"scan-card" in page.content
     journal = client.post(
         "/api/journal/tickets",
         json={
@@ -126,7 +131,7 @@ def test_mark_is_gone_and_does_not_write_paper(
                     "opponent": "KC",
                     "market": market["name"],
                     "side": "away",
-                    "game_id": board["cards"][0]["game_id"],
+                    "game_id": game_card["game_id"],
                 }
             ],
         },
@@ -238,12 +243,14 @@ def test_predictions_page_kickoff_and_away_home_buttons(
     page = client.get("/predictions")
     assert page.status_code == 200
     html = page.text
-    assert "Sun 12:00 PM CDT" in html
+    assert 'datetime="2026-09-27T17:00:00+00:00"' in html
+    assert "local-time.js" in html
+    assert "CDT" not in html
     assert "Buffalo Bills" in html
     assert "bills" in html.lower()
     assert "team-search" in html
     assert "Kansas City Chiefs" in html
-    assert "w4 Sun 12:00 PM CDT" in html
+    assert "w4 " in html
     assert "Bye w1" in html
     assert "BUF @ KC" not in html
     buf_btn = html.find('data-choice="away" data-winner="BUF"')
@@ -307,7 +314,7 @@ def test_ratings_and_rankings_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert "follows the model" not in again.text
     research = client.get("/research")
     assert "You:" in research.text
-    assert "Model " in research.text
+    assert "<em>Model</em>" in research.text
     ranking_html = client.get("/rankings").text
     assert "rank-grip" in ranking_html
     assert 'aria-label="Move Buffalo Bills up"' in ranking_html

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date, datetime
 
-from sbm.backtest import current_slate
+from sbm.backtest import current_slate, pregame_predictions
 from sbm.config import get_settings, params_for
+from sbm.errors import WeekErrorReport, bias_by_league, row_from_prediction
+from sbm.journal import format_slate, slate_bounds, slate_for_game, windows_between
 from sbm.mode import Mode
 from sbm.models.engine import ModelEngine
+from sbm.odds import expected_value, home_cover_prob, total_over_prob
+from sbm.picks import picks_from_prediction
+from sbm.postseason import PostseasonSlot, slots_for_season
+from sbm.predictions import CHICAGO, kickoff_in_chicago, kickoff_iso
 from sbm.schema import Game, League, Pick, Prediction
 from sbm.teams import abbrev_side, cfb_p4_conference, team_face
 from sbm.units import UnitBook, favorite_side, home_adjustment
@@ -398,6 +405,13 @@ def _card(
         "home_nickname": home_face.nickname,
         "away_abbrev": away_code,
         "home_abbrev": home_code,
+        "away_logo_url": away_face.logo_url,
+        "away_logo_mark": away_face.logo_mark,
+        "away_color": away_face.color,
+        "home_logo_url": home_face.logo_url,
+        "home_logo_mark": home_face.logo_mark,
+        "home_color": home_face.color,
+        "kickoff_iso": kickoff_iso(game.kickoff, game.league),
         "model_context": model_context,
         "away_rank": _rank_text(yours.get((away_group, game.away_team)), away_model),
         "home_rank": _rank_text(yours.get((home_group, game.home_team)), home_model),
@@ -416,4 +430,198 @@ def _card(
         "search_text": f"{away_face.search_text} {home_face.search_text}",
         "markets": markets,
         "picks": [p.model_dump(mode="json") for p in model_picks],
+    }
+
+
+# Card fill is the research heatmap: both agree the market is wrong, then the model, then you.
+_HEAT_RANK = {"both": 0, "model": 1, "you": 2, "none": 3}
+
+
+def research_sort_key(card: dict) -> tuple:
+    """Heatmap color, then best expected value. A game with no line sorts last."""
+    value = card.get("value")
+    return (
+        0 if value is not None else 1,
+        _HEAT_RANK.get(card.get("fill"), 3),
+        -(value if isinstance(value, int | float) else 0.0),
+        card.get("game_id") or card.get("slot_id") or "",
+    )
+
+
+def best_market_ev(game: Game, pred: Prediction) -> float | None:
+    """Best side's expected value across spread, total, and moneyline."""
+    settings = get_settings()
+    params = params_for(game.league)
+    values: list[float] = []
+    if game.spread_close is not None:
+        cover = home_cover_prob(
+            pred.predicted_home_margin, game.spread_close, params.margin_sigma
+        )
+        values.append(expected_value(cover, settings.juice))
+        values.append(expected_value(1.0 - cover, settings.juice))
+    if game.total_close is not None:
+        over = total_over_prob(pred.predicted_total, game.total_close, params.total_sigma)
+        values.append(expected_value(over, settings.juice))
+        values.append(expected_value(1.0 - over, settings.juice))
+    if game.home_moneyline is not None and game.away_moneyline is not None:
+        values.append(expected_value(pred.home_win_prob, game.home_moneyline))
+        values.append(expected_value(1.0 - pred.home_win_prob, game.away_moneyline))
+    if not values:
+        return None
+    return max(values)
+
+
+def _engines_through(
+    games: list[Game],
+    units: UnitBook | None,
+    window_end: date,
+    *,
+    include_undated: bool,
+) -> dict[League, ModelEngine]:
+    """Finals on or before the window. Undated games count only on the default week."""
+    ordered = sorted(
+        games,
+        key=lambda game: (
+            game.season,
+            game.week,
+            game.kickoff.isoformat() if game.kickoff else "",
+            game.game_id,
+        ),
+    )
+    engines: dict[League, ModelEngine] = {}
+    for game in ordered:
+        local = kickoff_in_chicago(game.kickoff, game.league)
+        if local is None:
+            if not include_undated:
+                continue
+        elif local.date() > window_end:
+            continue
+        engine = engines.setdefault(game.league, ModelEngine(game.league, units=units))
+        if game.is_final:
+            engine.update(game)
+    return engines
+
+
+def season_windows(games: list[Game], season: int) -> list[tuple[date, date]]:
+    moments: list[datetime] = []
+    for game in games:
+        if game.season != season:
+            continue
+        local = kickoff_in_chicago(game.kickoff, game.league)
+        if local is not None:
+            moments.append(local)
+    for slot in slots_for_season(season):
+        moments.append(slot.sort_at)
+    if not moments:
+        return [slate_bounds(datetime.now(CHICAGO))]
+    return windows_between(min(moments), max(moments))
+
+
+def _window_for(windows: list[tuple[date, date]], today: date) -> tuple[date, date]:
+    for window in windows:
+        if window[0] <= today <= window[1]:
+            return window
+    if today < windows[0][0]:
+        return windows[0]
+    return windows[-1]
+
+
+def _slot_card(slot: PostseasonSlot) -> dict:
+    bits = [slot.round_name, slot.day_label or "", slot.venue or ""]
+    return {
+        "kind": "slot",
+        "slot_id": slot.slot_id,
+        "league": slot.league.value,
+        "round_name": slot.round_name,
+        "kickoff_iso": slot.kickoff_iso(),
+        "day_label": slot.day_label,
+        "venue": slot.venue,
+        "sort_at": slot.sort_at.isoformat(),
+        "search_text": " ".join(bit for bit in bits if bit),
+    }
+
+
+def research_board(
+    games: list[Game],
+    *,
+    season: int,
+    league: League | None = None,
+    week: date | None = None,
+    predicted_winners: dict[str, str] | None = None,
+    units: UnitBook | None = None,
+    you_ranks: dict[tuple[str, str], int] | None = None,
+    today: date | None = None,
+) -> dict:
+    """One Tuesday–Monday window, priced from games that are already final."""
+    windows = season_windows(games, season)
+    current = today or datetime.now(CHICAGO).date()
+    selected = _window_for(windows, current)
+    if week is not None:
+        match = next((item for item in windows if item[0] == week), None)
+        if match is not None:
+            selected = match
+    start, end = selected
+    default_start = _window_for(windows, current)[0]
+    preds, _engines = pregame_predictions(games, units=units)
+    rank_engines = _engines_through(
+        games, units, end, include_undated=start == default_start
+    )
+    model_ranks = _model_ranks(rank_engines, games, season)
+    winners = predicted_winners or {}
+    yours = you_ranks or {}
+    week_cards: list[dict] = []
+    finals: list[tuple[Game, Prediction]] = []
+    for game in games:
+        if game.season != season:
+            continue
+        if league is not None and game.league != league:
+            continue
+        slate = slate_for_game(game)
+        if slate is None:
+            if start != default_start:
+                continue
+        elif slate[0] != start:
+            continue
+        pred = preds.get(game.game_id)
+        if pred is None:
+            continue
+        if game.is_final:
+            finals.append((game, pred))
+        picks = picks_from_prediction(game, pred, Mode.SIMULATION, apply_week_gate=False)
+        card = _card(
+            game,
+            pred,
+            picks,
+            winners.get(game.game_id),
+            engine=rank_engines.get(game.league),
+            units=units,
+            model_ranks=model_ranks,
+            you_ranks=yours,
+        )
+        card["kind"] = "game"
+        card["value"] = best_market_ev(game, pred)
+        week_cards.append(card)
+    week_cards.sort(key=research_sort_key)
+    slot_cards = [
+        _slot_card(slot)
+        for slot in slots_for_season(season)
+        if slot.window_start() == start and (league is None or slot.league == league)
+    ]
+    slot_cards.sort(key=lambda card: (card["sort_at"], card["slot_id"]))
+    rows = [row_from_prediction(game, pred) for game, pred in finals]
+    errors = WeekErrorReport(
+        season=season,
+        week=0,
+        n_games=len(rows),
+        games=rows,
+        by_league=bias_by_league(rows),
+    )
+    return {
+        "weeks": [
+            {"start": window[0].isoformat(), "label": format_slate(*window)} for window in windows
+        ],
+        "week": start.isoformat(),
+        "slate_label": format_slate(start, end),
+        "cards": week_cards + slot_cards,
+        "errors": errors,
     }

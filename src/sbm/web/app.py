@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -44,6 +44,7 @@ def _nav() -> list[dict[str, str]]:
         {"href": "/predictions", "label": "Predictions", "key": "predictions"},
         {"href": "/ratings", "label": "Ratings", "key": "ratings"},
         {"href": "/rankings", "label": "Rankings", "key": "rankings"},
+        {"href": "/records", "label": "Records", "key": "records"},
         {"href": "/journal", "label": "Journal", "key": "journal"},
     ]
 
@@ -83,18 +84,24 @@ class PredictionsNoteRequest(BaseModel):
     note: str | None = None
 
 
-def _board_payload(league: str | None = None) -> dict:
-    from sbm.backtest import infer_current_week
+def _parse_week(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _board_payload(league: str | None = None, week: str | None = None) -> dict:
     from sbm.data.store import load_games
-    from sbm.errors import week_error_report
     from sbm.predictions import load_book, winners_by_game
     from sbm.rankings import load_rankings
     from sbm.units import load_unit_book
-    from sbm.web.board import game_cards
+    from sbm.web.board import research_board
 
     lg = League(league) if league in {item.value for item in League} else None
     catalog = load_games()
-    games = [g for g in catalog if lg is None or g.league == lg]
     season = RESEARCH_WINDOWS.hands_off
     book = load_book(season)
     units = load_unit_book()
@@ -104,49 +111,27 @@ def _board_payload(league: str | None = None) -> dict:
         for group, names in ranks.groups.items()
         for index, team in enumerate(names)
     }
-    cards, picks = (
-        game_cards(
-            games,
-            Mode.SIMULATION,
-            lg,
-            season=season,
-            predicted_winners=winners_by_game(book),
-            units=units,
-            you_ranks=you_ranks,
-        )
-        if games
-        else ([], [])
+    board = research_board(
+        catalog,
+        season=season,
+        league=lg,
+        week=_parse_week(week),
+        predicted_winners=winners_by_game(book),
+        units=units,
+        you_ranks=you_ranks,
     )
-    slate_bits = []
-    seen: set[tuple[str, int, int]] = set()
-    for card in cards:
-        key = (card["league"], card["season"], card["week"])
-        if key in seen:
-            continue
-        seen.add(key)
-        slate_bits.append(f"{card['league'].upper()} {card['season']} Week {card['week']}")
-    errors = None
-    inferred = infer_current_week(games, season=season) if games else None
-    if inferred is not None:
-        errors = week_error_report(
-            games,
-            season=inferred[0],
-            week=inferred[1],
-            mode=Mode.SIMULATION,
-            league=lg,
-            units=units,
-        ).model_dump(mode="json")
     return {
         "mode": Mode.SIMULATION.value,
         "banner": (
-            "Research — this week's model vs market. Log tickets into Journal. "
+            "Research — one week at a time, model vs market. Open a game to log a ticket. "
             "This does not train Elo."
         ),
-        "slate_label": " · ".join(slate_bits) if slate_bits else "No current slate",
-        "cards": cards,
-        "picks": [p.model_dump(mode="json") for p in picks],
-        "errors": errors,
-        "has_games": bool(games),
+        "slate_label": board["slate_label"],
+        "weeks": board["weeks"],
+        "week": board["week"],
+        "cards": board["cards"],
+        "errors": board["errors"].model_dump(mode="json"),
+        "has_games": any(game.season == season for game in catalog),
         "nav": _nav(),
         "active": "research",
         "season": season,
@@ -203,7 +188,7 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
     from sbm.predictions import (
         audit_covers,
         bye_weeks,
-        format_kickoff_cdt,
+        kickoff_iso,
         leftovers_for,
         save_book,
     )
@@ -284,7 +269,7 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
             row["away_logo_mark"] = away_face.logo_mark
             row["home_logo_mark"] = home_face.logo_mark
             row["opp_logo_mark"] = opp_face.logo_mark
-            row["kickoff_label"] = format_kickoff_cdt(kickoff, team.league)
+            row["kickoff_iso"] = kickoff_iso(kickoff, team.league)
             stored = games_by_id.get(row["game_id"])
             row["international"] = bool(
                 stored is not None and is_international_venue(stored.venue)
@@ -384,8 +369,10 @@ def index() -> RedirectResponse:
 
 
 @app.get("/research", response_class=HTMLResponse)
-def research(request: Request, league: str | None = None) -> HTMLResponse:
-    payload = _board_payload(league)
+def research(
+    request: Request, league: str | None = None, week: str | None = None
+) -> HTMLResponse:
+    payload = _board_payload(league, week)
     return templates.TemplateResponse(
         request,
         "board.html",
@@ -597,6 +584,62 @@ def rankings_page(
     )
 
 
+def _records_payload(season: int, group: str) -> dict:
+    from sbm.data.store import load_games
+    from sbm.records import GROUPS, record_text, standings
+    from sbm.teams import nfl_conference, team_face
+
+    chosen = group if group in GROUPS else "nfl"
+    rows = []
+    for record in standings(load_games(), season, chosen):
+        face = team_face(record.league, record.team)
+        overall, conference = record_text(record)
+        if chosen == "nfl":
+            conf_label = nfl_conference(record.team) or "Conf"
+        else:
+            conf_label = chosen
+        rows.append(
+            {
+                "team": record.team,
+                "display_name": face.display_name,
+                "place": face.place,
+                "nickname": face.nickname,
+                "logo_url": face.logo_url,
+                "logo_mark": face.logo_mark,
+                "color": face.color,
+                "overall": overall,
+                "conference": conference,
+                "conference_label": conf_label,
+            }
+        )
+    return {
+        "banner": (
+            "Records — order comes from results on hand, not the official tiebreaker sheet. "
+            "A coin flip or a selection committee is not something these scores can settle."
+        ),
+        "season": season,
+        "group": chosen,
+        "groups": GROUPS,
+        "rows": rows,
+        "nav": _nav(),
+        "active": "records",
+    }
+
+
+@app.get("/records", response_class=HTMLResponse)
+def records_page(
+    request: Request,
+    season: int = RESEARCH_WINDOWS.hands_off,
+    group: str = "nfl",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "records.html",
+        _records_payload(season, group),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.post("/api/rankings/move")
 def api_rankings_move(body: RankingsMoveRequest) -> JSONResponse:
     from sbm.rankings import load_rankings, move_team, save_rankings, visible_order
@@ -715,10 +758,12 @@ def predictions_page(
 
 
 @app.get("/api/board")
-def api_board(mode: str = "simulation", league: str | None = None) -> JSONResponse:
+def api_board(
+    mode: str = "simulation", league: str | None = None, week: str | None = None
+) -> JSONResponse:
     _mode(mode)
     return JSONResponse(
-        _board_payload(league),
+        _board_payload(league, week),
         headers={"Cache-Control": "no-store"},
     )
 
