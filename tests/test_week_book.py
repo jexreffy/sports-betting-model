@@ -10,7 +10,7 @@ from sbm.schema import League, LedgerEntry, Market, Pick, Side
 from sbm.web.app import app
 
 
-def test_board_bankroll_ignores_historical_ledger(
+def test_board_does_not_surface_paper_ledgers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
@@ -55,7 +55,9 @@ def test_board_bankroll_ignores_historical_ledger(
     )
     client = TestClient(app)
     body = client.get("/api/board", params={"mode": "simulation"}).json()
-    assert body["summary"]["units"] == 0.91
-    assert body["curve"][-1]["cumulative_units"] == 0.91
-    assert body["curve"][-1]["game_id"] == "week-now"
-    assert all(p["game_id"] != "hist-1" for p in body["curve"])
+    assert "summary" not in body
+    assert "curve" not in body
+    assert "book" not in body
+    page = client.get("/research")
+    assert b"bankroll" not in page.content
+    assert b"Chart" not in page.content

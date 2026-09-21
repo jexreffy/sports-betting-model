@@ -21,8 +21,13 @@ journal_app = typer.Typer(
     help="2026 real-money Journal (logging only). Isolated from Simulation.",
     rich_markup_mode=None,
 )
+predictions_app = typer.Typer(
+    help="Current-year W/L Predictions. Isolated from Journal.",
+    rich_markup_mode=None,
+)
 app.add_typer(simulate_app, name="simulate")
 app.add_typer(journal_app, name="journal")
+app.add_typer(predictions_app, name="predictions")
 
 
 def _seasons(start: int, end: int) -> list[int]:
@@ -134,7 +139,7 @@ def simulate_save_week(
     week: Annotated[int | None, typer.Option()] = None,
     league: Annotated[str | None, typer.Option()] = None,
 ) -> None:
-    """Alias for `simulate picks` — write this week's slate into the 2026 diary."""
+    """Alias for `simulate picks` — print this week's model slate. Does not write a paper book."""
     _run_week_picks(Mode.SIMULATION, season, week, league)
 
 
@@ -298,6 +303,70 @@ def journal_migrate_live() -> None:
     typer.echo(f"Migrated {n} live paper rows")
 
 
+@predictions_app.command("init")
+def predictions_init(
+    season: Annotated[int, typer.Option()] = RESEARCH_WINDOWS.hands_off,
+) -> None:
+    from sbm.data.store import load_games
+    from sbm.predictions import init_book, save_book
+
+    book = init_book(load_games(), season)
+    save_book(book)
+    typer.echo(f"Initialized {len(book.teams)} team cards for {season}")
+
+
+@predictions_app.command("sync")
+def predictions_sync(
+    season: Annotated[int, typer.Option()] = RESEARCH_WINDOWS.hands_off,
+) -> None:
+    from sbm.data.store import load_games
+    from sbm.predictions import load_book, save_book, sync_actuals
+
+    book = load_book(season)
+    if book is None:
+        raise typer.BadParameter("No predictions file. Run `sbm predictions init`.")
+    updated = sync_actuals(book, load_games())
+    save_book(updated)
+    typer.echo(f"Synced actuals for {season}; picks unchanged")
+
+
+@predictions_app.command("set")
+def predictions_set(
+    game_id: Annotated[str, typer.Option()],
+    winner: Annotated[str, typer.Option()],
+    season: Annotated[int, typer.Option()] = RESEARCH_WINDOWS.hands_off,
+) -> None:
+    from sbm.predictions import load_book, save_book, set_winner
+
+    book = load_book(season)
+    if book is None:
+        raise typer.BadParameter("No predictions file. Run `sbm predictions init`.")
+    updated = set_winner(book, game_id, winner)
+    save_book(updated)
+    typer.echo(f"{game_id} -> {winner}")
+
+
+@predictions_app.command("apply-ranks")
+def predictions_apply_ranks(
+    file: Annotated[Path, typer.Option(help="JSON object of group -> ranked team names")],
+    season: Annotated[int, typer.Option()] = RESEARCH_WINDOWS.hands_off,
+) -> None:
+    import json
+
+    from sbm.data.store import load_games
+    from sbm.predictions import apply_ranks, load_book, save_book
+
+    book = load_book(season)
+    if book is None:
+        raise typer.BadParameter("No predictions file. Run `sbm predictions init`.")
+    ranks = json.loads(file.read_text(encoding="utf-8"))
+    updated, filled, leftovers = apply_ranks(book, ranks, load_games())
+    save_book(updated)
+    typer.echo(f"Filled {filled} remaining games")
+    for row in leftovers:
+        typer.echo(f"  leftover w{row['week']} {row['matchup']}")
+
+
 @app.command("live")
 def live_renamed() -> None:
     """Renamed to `sbm journal`."""
@@ -322,7 +391,6 @@ def serve(
 def _run_week_picks(mode: Mode, season: int | None, week: int | None, league: str | None) -> None:
     from sbm.backtest import current_slate_picks
     from sbm.data.store import load_games
-    from sbm.paper import Ledger
     from sbm.providers.lines import default_provider
 
     if season is None and mode == Mode.SIMULATION:
@@ -333,9 +401,7 @@ def _run_week_picks(mode: Mode, season: int | None, week: int | None, league: st
     picks, _ = current_slate_picks(
         games, mode=mode, season=season, week=week, league=_league(league)
     )
-    ledger = Ledger(mode)
-    added = ledger.record_picks(picks)
-    typer.echo(f"{mode.value}: {len(picks)} candidate picks, {added} new diary rows")
+    typer.echo(f"{mode.value}: {len(picks)} model tickets (not booked)")
     for pick in picks:
         typer.echo(
             f"  {pick.league} {pick.season}w{pick.week} {pick.market} "

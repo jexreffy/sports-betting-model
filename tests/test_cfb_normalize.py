@@ -17,6 +17,8 @@ def test_fbs_only_and_consensus_line() -> None:
             "awayClassification": "fbs",
             "startDate": "2024-11-30T17:00:00.000Z",
             "neutralSite": False,
+            "homeConference": "Big Ten",
+            "awayConference": "Big Ten",
         },
         {
             "id": 2,
@@ -53,6 +55,8 @@ def test_fbs_only_and_consensus_line() -> None:
     assert game.spread_close == -2.5
     assert game.total_close == 42.5
     assert game.home_moneyline == -140
+    assert game.home_conference == "B1G"
+    assert game.away_conference == "B1G"
 
 
 def test_missing_classification_is_dropped() -> None:
@@ -72,3 +76,26 @@ def test_missing_classification_is_dropped() -> None:
         [],
     )
     assert games == []
+
+
+def test_fbs_vs_fcs_week_zero_is_kept() -> None:
+    games = games_from_cfbd_payloads(
+        [
+            {
+                "id": 3,
+                "season": 2026,
+                "week": 0,
+                "seasonType": "regular",
+                "homeTeam": "Alabama",
+                "awayTeam": "Montana",
+                "homePoints": 52,
+                "awayPoints": 7,
+                "homeClassification": "fbs",
+                "awayClassification": "fcs",
+            }
+        ],
+        [],
+    )
+    assert len(games) == 1
+    assert games[0].week == 0
+    assert games[0].away_team == "Montana"

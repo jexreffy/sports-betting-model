@@ -48,3 +48,13 @@ def live_ledger_legacy_path() -> Path:
 
 def games_path(league: str) -> Path:
     return raw_dir() / f"{league}_games.jsonl"
+
+
+def predictions_dir() -> Path:
+    path = data_root() / "predictions"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def predictions_path(season: int) -> Path:
+    return predictions_dir() / f"{season}.json"

@@ -18,6 +18,7 @@ def test_help() -> None:
     stdout = _plain(result.stdout)
     assert "simulate" in stdout
     assert "journal" in stdout
+    assert "predictions" in stdout
     live = runner.invoke(app, ["live"], color=False)
     assert live.exit_code == 0
     assert "Journal" in _plain(live.stdout)

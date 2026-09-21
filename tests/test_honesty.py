@@ -44,6 +44,22 @@ def test_early_cfb_is_flagged() -> None:
     )
     flags = honesty_flags(game, None)
     assert flags["early_season"] is True
+    assert flags["warning"] is True
+
+
+def test_international_nfl_is_warning() -> None:
+    game = Game(
+        game_id="lon",
+        league=League.NFL,
+        season=2026,
+        week=3,
+        home_team="BAL",
+        away_team="DAL",
+        venue="Tottenham Hotspur Stadium",
+    )
+    flags = honesty_flags(game, None)
+    assert flags["international"] is True
+    assert flags["warning"] is True
 
 
 def test_noisy_class_on_cards() -> None:

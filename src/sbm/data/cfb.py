@@ -6,6 +6,7 @@ import httpx
 
 from sbm.config import get_settings
 from sbm.schema import Game, League
+from sbm.teams import normalize_cfb_conference
 
 CFBD_BASE = "https://api.collegefootballdata.com"
 
@@ -27,16 +28,16 @@ def _parse_kickoff(value: object) -> datetime | None:
         return None
 
 
-def _is_fbs(game: dict) -> bool:
+def _is_fbs_game(game: dict) -> bool:
+    """Keep games with at least one FBS team so P4 vs FCS week 0/1 still ingest."""
     home_class = (game.get("homeClassification") or game.get("home_classification") or "").lower()
     away_class = (game.get("awayClassification") or game.get("away_classification") or "").lower()
-    # Older payloads used home_division
     if not home_class:
         home_class = (game.get("homeDivision") or game.get("home_division") or "").lower()
     if not away_class:
         away_class = (game.get("awayDivision") or game.get("away_division") or "").lower()
     if home_class or away_class:
-        return home_class == "fbs" and away_class == "fbs"
+        return home_class == "fbs" or away_class == "fbs"
     return False
 
 
@@ -84,7 +85,7 @@ def games_from_cfbd_payloads(games_payload: list[dict], lines_payload: list[dict
 
     out: list[Game] = []
     for raw in games_payload:
-        if not _is_fbs(raw):
+        if not _is_fbs_game(raw):
             continue
         season_type = str(raw.get("seasonType") or raw.get("season_type") or "regular").lower()
         if season_type not in {"regular", "postseason"}:
@@ -103,6 +104,8 @@ def games_from_cfbd_payloads(games_payload: list[dict], lines_payload: list[dict
         away_score = raw.get("awayPoints")
         if away_score is None:
             away_score = raw.get("away_points")
+        venue_raw = raw.get("venue") or raw.get("venueName") or raw.get("venue_name")
+        venue = str(venue_raw).strip() if venue_raw else None
         out.append(
             Game(
                 game_id=f"cfb-{gid}",
@@ -119,6 +122,13 @@ def games_from_cfbd_payloads(games_payload: list[dict], lines_payload: list[dict
                 home_moneyline=home_ml,
                 away_moneyline=away_ml,
                 is_neutral=bool(raw.get("neutralSite") or raw.get("neutral_site") or False),
+                venue=venue,
+                home_conference=normalize_cfb_conference(
+                    raw.get("homeConference") or raw.get("home_conference")
+                ),
+                away_conference=normalize_cfb_conference(
+                    raw.get("awayConference") or raw.get("away_conference")
+                ),
             )
         )
     return out

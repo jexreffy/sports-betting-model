@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sbm"
 version = "0.1.0"
-description = "NFL and CFB research model with an isolated 2026 Journal."
+description = "NFL and CFB research, current-year Predictions, and an isolated 2026 Journal."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Jeffrey" }]
