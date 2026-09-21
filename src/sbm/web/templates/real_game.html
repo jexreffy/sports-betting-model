@@ -6,7 +6,7 @@
   <header class="game-meta">
     <span class="league-chip">{{ meeting.card.league|upper if meeting.card else league|upper }}</span>
     <span>{{ meeting.season }} · Week {{ meeting.week }}</span>
-    {% if meeting.kickoff_label %}<time>{{ meeting.kickoff_label }}</time>{% endif %}
+    {% if meeting.kickoff_iso %}<time datetime="{{ meeting.kickoff_iso }}"></time>{% endif %}
     {% if meeting.card and meeting.card.is_final %}<span class="final-chip">Final</span>{% endif %}
     {% if meeting.international %}<span class="info-chip">International</span>{% endif %}
   </header>
@@ -24,7 +24,7 @@
     </div>
   </div>
   <dl class="conditions">
-    <div><dt>When</dt><dd>{{ meeting.kickoff_label or "Not stored" }}</dd></div>
+    <div><dt>When</dt><dd>{% if meeting.kickoff_iso %}<time datetime="{{ meeting.kickoff_iso }}"></time>{% else %}Not stored{% endif %}</dd></div>
     <div><dt>Where</dt><dd>{{ meeting.venue }}</dd></div>
     <div><dt>Site</dt><dd>{{ meeting.site }}</dd></div>
     <div><dt>Rest</dt><dd>{{ meeting.rest }}</dd></div>

@@ -6,7 +6,7 @@ from sbm.backtest import infer_current_week
 from sbm.config import RESEARCH_WINDOWS
 from sbm.matchup import MatchupView, SitePrice, price_matchup, resolve_team
 from sbm.mode import Mode
-from sbm.predictions import format_kickoff_cdt, load_book, team_key, winners_by_game
+from sbm.predictions import kickoff_iso, load_book, team_key, winners_by_game
 from sbm.rankings import load_rankings
 from sbm.schema import Game, League, SeasonPredictions
 from sbm.teams import TeamFace, team_face
@@ -216,7 +216,7 @@ def _meeting_payload(
         "home_name": home.display_name,
         **_face_fields(away, "away"),
         **_face_fields(home, "home"),
-        "kickoff_label": format_kickoff_cdt(game.kickoff, game.league),
+        "kickoff_iso": kickoff_iso(game.kickoff, game.league),
         "venue": game.venue or "Not stored",
         "site": "Neutral" if game.is_neutral else f"{home.display_name} home",
         "international": game.league == League.NFL and is_international_venue(game.venue),

@@ -1,14 +1,17 @@
 # SBM — NFL + CFB research, Predictions, and 2026 Journal
 
-A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**. **Research** is this week's model vs market. **Predictions** is your current-year W/L take on NFL and P4 CFB.
+A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**. **Research** is one football week at a time, model vs market. **Predictions** is your current-year W/L take on NFL and P4 CFB. **Records** ranks each group from games already final.
 
 ## Surfaces
 
 | Surface | What it is | Store |
 | --- | --- | --- |
-| **Research** | This week's Elo vs close. Log a ticket from a market button. Not a paper book. | Elo from `data/raw/` |
-| **Game** | One matchup. Three model prices, then each real meeting in that season. | Elo and unit stats from `data/raw/` |
+| **Research** | One Tuesday–Monday week, shared by NFL and CFB. Condensed cards, heatmap order, local kickoff clocks. Empty slots for published 2026 title and playoff times. Open a game to log a ticket. | Elo from `data/raw/` |
+| **Game** | One matchup. Three model prices, then each real meeting in that season, with Log buttons. | Elo and unit stats from `data/raw/` |
 | **Predictions** | Current-year schedule W/L takes (NFL + B1G/SEC/ACC/Big 12). Results fill in; picks never auto-flip. | `data/predictions/{season}.json` |
+| **Ratings** | Neutral-field favorability versus an average opponent. | Elo from `data/raw/` |
+| **Rankings** | Your order of NFL and each Power conference. Research shows it beside the model. | `data/rankings/{season}.json` |
+| **Records** | Overall and conference record from ingested finals. Win percentage, then head-to-head, conference record, point differential, points scored. Not the official standings. | Finals in `data/raw/` |
 | **Journal** | What you actually bet in 2026 (Novig today): dollars, parlays, early cash-out, year hit/miss | `data/journal/tickets.jsonl` |
 
 `sbm simulate backtest` is a buried historical lab. It is not a weekly book. 2026 stays **hands-off** for historical P&L.
@@ -16,9 +19,10 @@ A local research tool that prices NFL and FBS **spreads, moneylines, and totals*
 ## Weekly playbook
 
 1. `sbm ingest` if the slate looks stale.
-2. Open **Research** (`/` or `/research`). Read model tickets and colors. Log real tickets into Journal from the market buttons.
-3. **Predictions** (`/predictions`): click remaining winners. Power rankings stay outside the app — paste them in chat and the agent fills remaining games. CFB non-conference leftovers stay flagged for a gut call.
-4. **Journal** (`/journal`): search and filter the book. After games, `sbm journal settle`.
+2. Open **Research** (`/` or `/research`). Pick the week. Green, then yellow, then orange cards come first. Search a team, then open a game to log a real ticket into Journal. Weeks with no closing line still list the games. Championship and playoff weeks show empty slots until the matchups exist.
+3. **Predictions** (`/predictions`): click remaining winners. **Rankings** (`/rankings`) is your order; paste a list in chat and the agent can apply it. CFB non-conference leftovers stay flagged for a gut call.
+4. **Records** (`/records`): overall and conference record from finals already ingested. This is not the league’s tiebreaker sheet.
+5. **Journal** (`/journal`): search and filter the book. After games, `sbm journal settle`.
 
 **A few times a year**
 
@@ -28,7 +32,7 @@ sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
 
 ## Research colors
 
-Warning is a red badge/border, not a fill. Fill is disagreement with the market:
+The week is ordered by these fills, then by the best expected value on the card. A game with no posted line sits at the bottom. Warning is a red badge/border, not a fill. Fill is disagreement with the market:
 
 - **Orange** — your predicted winner is not the market favorite
 - **Yellow** — the model has a ticket
@@ -98,7 +102,7 @@ sbm serve                 # 127.0.0.1:8000, no reload
 sbm serve --reload        # pick up Python edits
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Research). **Game** is `/game`. **Predictions** is `/predictions`. **Journal** is `/journal`.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Research). **Game** is `/game`. **Predictions** is `/predictions`. **Ratings** is `/ratings`. **Rankings** is `/rankings`. **Records** is `/records`. **Journal** is `/journal`. Kickoff clocks render in the browser’s local time zone. Week labels stay calendar dates.
 
 Ingest of a season range **merges** into the existing JSONL: only those seasons are replaced.
 
@@ -146,8 +150,10 @@ v1 does **not** provision a paid host.
 - `src/sbm/data/` — NFL / CFB adapters + JSONL store
 - `src/sbm/backtest.py` — walk-forward + current-week slate
 - `src/sbm/paper.py` — historical simulation ledger only
-- `src/sbm/journal.py` — real 2026 tickets
+- `src/sbm/journal.py` — real 2026 tickets and Tuesday–Monday windows
 - `src/sbm/predictions.py` — current-year W/L takes
+- `src/sbm/records.py` — standings from ingested finals
+- `src/sbm/postseason.py` — published 2026 title and playoff times, not games
 - `src/sbm/providers/lines.py` — swappable market lines
 - `src/sbm/web/` — FastAPI + Jinja dashboard
 - `tests/` — EV math, leakage, ledger isolation, journal grade, predictions

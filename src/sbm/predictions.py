@@ -56,6 +56,14 @@ def kickoff_in_chicago(kickoff: datetime | None, league: League | None = None) -
     return aware.astimezone(CHICAGO)
 
 
+def kickoff_iso(kickoff: datetime | None, league: League | None = None) -> str | None:
+    """Corrected kickoff instant as UTC ISO, for the browser to format locally."""
+    local = kickoff_in_chicago(kickoff, league)
+    if local is None:
+        return None
+    return local.astimezone(UTC).isoformat()
+
+
 def format_kickoff_cdt(kickoff: datetime | None, league: League | None = None) -> str | None:
     """Weekday and local kickoff in America/Chicago (CDT or CST)."""
     local = kickoff_in_chicago(kickoff, league)
@@ -672,7 +680,7 @@ def leftovers_for(book: SeasonPredictions, conference: str | None = None) -> lis
                     "opponent": row.opponent,
                     "week": str(row.week),
                     "conference": team.conference,
-                    "kickoff_label": format_kickoff_cdt(row.kickoff, team.league) or "",
+                    "kickoff_iso": kickoff_iso(row.kickoff, team.league) or "",
                 }
             )
     return out

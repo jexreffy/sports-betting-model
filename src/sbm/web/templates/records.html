@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SBM — Records</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  {% from "_club_name.html" import club_name %}
+  <header>
+    <div class="brand">SBM · NFL + CFB</div>
+    <nav class="switcher" aria-label="Book">
+      {% for item in nav %}
+      <a class="{{ 'active-' + item.key if item.key == active else '' }}" href="{{ item.href }}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+  <main>
+    <div class="banner">{{ banner }}</div>
+    <div class="filters">
+      {% for name in groups %}
+      <a class="{{ 'is-current' if name == group else '' }}" href="/records?group={{ name|urlencode }}">{{ 'NFL' if name == 'nfl' else name }}</a>
+      {% endfor %}
+    </div>
+    <section class="panel">
+      <h2>{{ season }} {{ 'NFL' if group == 'nfl' else group }}</h2>
+      {% if rows %}
+      <ol class="rank-list">
+        {% for row in rows %}
+        <li style="box-shadow: inset 3px 0 0 {{ row.color }}">
+          <span class="rank-num">{{ loop.index }}</span>
+          {% if row.logo_mark %}<span class="team-mark" aria-hidden="true">{{ row.logo_mark }}</span>{% elif row.logo_url %}<img class="chip-logo" src="{{ row.logo_url }}" alt="" width="18" height="18" />{% endif %}
+          <span class="rank-name">{{ club_name(row.place, row.nickname, row.display_name) }}</span>
+          <span class="record-col">
+            <strong>{{ row.overall }}</strong>
+            <small>{{ row.conference_label }} {{ row.conference }}</small>
+          </span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="empty">No teams ingested for this group.</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
