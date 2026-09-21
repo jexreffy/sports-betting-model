@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SBM — Predictions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">SBM · NFL + CFB</div>
+    <nav class="switcher" aria-label="Book">
+      {% for item in nav %}
+      <a class="{{ 'active-' + item.key if item.key == active else '' }}" href="{{ item.href }}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+  <main>
+    <div class="banner">{{ banner }}</div>
+    <div class="filters">
+      Conference:
+      <a href="/predictions">all</a>
+      <a href="/predictions?conference=nfl">NFL</a>
+      <a href="/predictions?conference=B1G">B1G</a>
+      <a href="/predictions?conference=SEC">SEC</a>
+      <a href="/predictions?conference=ACC">ACC</a>
+      <a href="/predictions?conference=Big 12">Big 12</a>
+      <label class="team-search">
+        <span class="visually-hidden">Search teams</span>
+        <input id="team-search" type="search" placeholder="Find a team (Steelers, Pitt, Buckeyes…)" autocomplete="off" />
+      </label>
+    </div>
+
+    {% if leftovers %}
+    <section class="panel">
+      <h2>Non-conference leftovers</h2>
+      <ul class="leftover-list">
+        {% for row in leftovers %}
+        <li>w{{ row.week }} {{ row.team }} vs {{ row.opponent }}{% if row.kickoff_label %} · {{ row.kickoff_label }}{% endif %} <span class="muted">{{ row.conference }}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <div class="pred-grid" id="pred-grid">
+      {% for team in teams %}
+      <article class="team-card{% if team.reconsider %} reconsider{% endif %}" data-search="{{ team.search_text|e }}"{% if team.color %} style="--team-color: {{ team.color }}"{% endif %}>
+        <header>
+          {% if team.logo_mark %}<span class="team-mark team-logo" aria-hidden="true">{{ team.logo_mark }}</span>{% elif team.logo_url %}<img class="team-logo" src="{{ team.logo_url }}" alt="" width="32" height="32" />{% endif %}
+          <h2>{{ team.display_name }}</h2>
+          <span class="league-chip">{{ team.conference }}</span>
+          {% if team.reconsider %}<span class="warning-chip">Reconsider</span>{% endif %}
+        </header>
+        <p class="muted">You picked them in {{ team.predicted_wins_played }} of {{ team.n_played }} played · they won {{ team.actual_wins }}</p>
+        {% if team.bye_weeks %}<p class="muted">Bye w{{ team.bye_weeks | join(", w") }}</p>{% endif %}
+        <label class="note-row">Note
+          <input class="team-note" data-team="{{ team.team }}" data-league="{{ team.league }}" value="{{ team.note or '' }}" />
+        </label>
+        <div class="pick-strip" aria-label="Graded games">
+          {% for g in team.games %}
+          {% if g.actual_winner %}
+          {% set loc = "vs" if g.is_home else "@" %}
+          {% set wl = "W" if g.actual_winner == team.team else "L" %}
+          {% set when = " · " + g.kickoff_label if g.kickoff_label else "" %}
+          {% set intl = " · INTL" if g.international else "" %}
+          {% if g.predicted_winner %}
+          {% set hit = g.predicted_winner == g.actual_winner %}
+          <span
+            class="pick-chip {{ 'hit' if hit else 'miss' }}"
+            title="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}{% if g.venue %} · {{ g.venue }}{% endif %}"
+            aria-label="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}, {{ 'right' if hit else 'wrong' }}"
+          >{% if g.opp_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.opp_logo_mark }}</span>{% elif g.opp_logo_url %}<img class="chip-logo" src="{{ g.opp_logo_url }}" alt="" width="18" height="18" />{% endif %}w{{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{% if g.international %} <span class="intl-chip">INTL</span>{% endif %}</span>
+          {% else %}
+          <span
+            class="pick-chip ungraded"
+            title="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}{% if g.venue %} · {{ g.venue }}{% endif %}"
+            aria-label="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}"
+          >{% if g.opp_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.opp_logo_mark }}</span>{% elif g.opp_logo_url %}<img class="chip-logo" src="{{ g.opp_logo_url }}" alt="" width="18" height="18" />{% endif %}w{{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{% if g.international %} <span class="intl-chip">INTL</span>{% endif %}</span>
+          {% endif %}
+          {% endif %}
+          {% endfor %}
+        </div>
+        <ul class="schedule">
+          {% for g in team.open_schedule %}
+          {% if g.kind == "bye" %}
+          <li class="sched-row bye"><span class="muted">w{{ g.week }} BYE</span></li>
+          {% else %}
+          <li class="sched-row{% if g.leftover and not g.predicted_winner %} leftover{% endif %}{% if g.international %} international{% endif %}">
+            <span class="muted">w{{ g.week }}{% if g.kickoff_label %} {{ g.kickoff_label }}{% endif %}{% if g.international %} <span class="intl-chip" title="{{ g.venue or 'International' }}">INTL</span>{% endif %}</span>
+            <span class="pick-buttons">
+              <button type="button" class="pick-winner{% if g.predicted_winner == g.away_team %} selected{% endif %}" data-game="{{ g.game_id }}" data-winner="{{ g.away_team }}">{% if g.away_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.away_logo_mark }}</span>{% elif g.away_logo_url %}<img class="chip-logo" src="{{ g.away_logo_url }}" alt="" width="16" height="16" />{% endif %}{{ g.away_abbrev }}</button>
+              <button type="button" class="pick-winner{% if g.predicted_winner == g.home_team %} selected{% endif %}" data-game="{{ g.game_id }}" data-winner="{{ g.home_team }}">{% if g.home_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.home_logo_mark }}</span>{% elif g.home_logo_url %}<img class="chip-logo" src="{{ g.home_logo_url }}" alt="" width="16" height="16" />{% endif %}{{ g.home_abbrev }}</button>
+            </span>
+          </li>
+          {% endif %}
+          {% endfor %}
+        </ul>
+      </article>
+      {% else %}
+      <p class="empty">No Predictions roster yet. Ingest {{ season }} and open this page again.</p>
+      {% endfor %}
+    </div>
+    <p class="empty" id="search-empty" hidden>No teams match that search.</p>
+  </main>
+  <script>
+    const season = {{ season }};
+    document.querySelectorAll(".pick-winner").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const resp = await fetch("/api/predictions/set", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            season,
+            game_id: btn.getAttribute("data-game"),
+            predicted_winner: btn.getAttribute("data-winner"),
+          }),
+        });
+        if (!resp.ok) {
+          window.alert(await resp.text());
+          return;
+        }
+        window.location.reload();
+      });
+    });
+    document.querySelectorAll(".team-note").forEach((input) => {
+      input.addEventListener("change", async () => {
+        const resp = await fetch("/api/predictions/note", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            season,
+            team: input.getAttribute("data-team"),
+            league: input.getAttribute("data-league"),
+            note: input.value || null,
+          }),
+        });
+        if (!resp.ok) window.alert(await resp.text());
+      });
+    });
+    const search = document.getElementById("team-search");
+    const grid = document.getElementById("pred-grid");
+    const empty = document.getElementById("search-empty");
+    const leftovers = document.querySelector(".leftover-list")?.closest("section");
+    function cardMatches(haystack, query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      const h = (haystack || "").toLowerCase();
+      if (h.includes(q)) return true;
+      return q.split(/\s+/).every((word) => h.includes(word));
+    }
+    function applySearch() {
+      if (!grid || !search) return;
+      const q = search.value;
+      let shown = 0;
+      grid.querySelectorAll(".team-card").forEach((card) => {
+        const ok = cardMatches(card.getAttribute("data-search"), q);
+        card.hidden = !ok;
+        if (ok) shown += 1;
+      });
+      if (leftovers) leftovers.hidden = q.trim() !== "";
+      if (empty) empty.hidden = shown > 0 || q.trim() === "";
+    }
+    if (search) {
+      const params = new URLSearchParams(window.location.search);
+      const initial = params.get("q");
+      if (initial) search.value = initial;
+      search.addEventListener("input", applySearch);
+      applySearch();
+    }
+  </script>
+</body>
+</html>

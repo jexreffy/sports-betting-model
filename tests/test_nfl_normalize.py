@@ -24,6 +24,7 @@ def test_schedules_to_games_maps_spread_as_home_line() -> None:
                 "gametime": "20:20",
                 "home_rest": 10,
                 "away_rest": 10,
+                "stadium": "Arrowhead Stadium",
             }
         ]
     )
@@ -35,6 +36,9 @@ def test_schedules_to_games_maps_spread_as_home_line() -> None:
     assert game.spread_close == -3.0
     assert game.total_close == 47.5
     assert game.home_margin == 7
+    assert game.venue == "Arrowhead Stadium"
+    assert game.home_conference == "AFC"
+    assert game.away_conference == "AFC"
 
 
 def test_preseason_rows_are_dropped() -> None:

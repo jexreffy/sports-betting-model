@@ -1,5 +1,16 @@
 from sbm.schema import League
-from sbm.teams import aliases_for, book_ticket_label, display_name, search_blob
+from sbm.teams import (
+    aliases_for,
+    book_ticket_label,
+    display_name,
+    logo_url,
+    render_abbrev,
+    render_display_name,
+    render_logo_mark,
+    render_logo_url,
+    search_blob,
+    team_color,
+)
 
 
 def test_nfl_search_includes_city_and_nickname() -> None:
@@ -26,6 +37,15 @@ def test_cfb_display_is_school_and_nickname() -> None:
     assert display_name(League.CFB, "Ohio State") == "Ohio State Buckeyes"
 
 
+def test_michigan_render_is_ttun_only() -> None:
+    assert render_display_name(League.CFB, "Michigan") == "The Team Up North"
+    assert render_abbrev(League.CFB, "Michigan") == "TTUN"
+    assert render_logo_mark(League.CFB, "Michigan") == "❌"
+    assert render_logo_url(League.CFB, "Michigan") is None
+    assert render_abbrev(League.CFB, "Michigan State") == "MSU"
+    assert "ncaa/500/130.png" in (logo_url(League.CFB, "Michigan") or "")
+
+
 def test_book_ticket_includes_matchup_abbrevs_for_totals() -> None:
     label = book_ticket_label(
         column="system",
@@ -50,3 +70,16 @@ def test_cfb_book_ticket_uses_school_abbrevs() -> None:
         market="spread",
     )
     assert label == "Gut · CFB w3 MICH@OSU MICH spread"
+
+
+def test_nfl_logo_uses_espn_slug() -> None:
+    assert logo_url(League.NFL, "LA").endswith("/lar.png")
+    assert logo_url(League.NFL, "WAS").endswith("/wsh.png")
+    assert logo_url(League.NFL, "KC").endswith("/kc.png")
+    assert "ncaa/500/87.png" in (logo_url(League.CFB, "Notre Dame") or "")
+
+
+def test_cfb_team_color_is_school_primary() -> None:
+    assert team_color(League.CFB, "Michigan", "B1G") == "#00274C"
+    assert team_color(League.CFB, "Ohio State", "B1G") == "#BB0000"
+    assert team_color(League.NFL, "KC") == "#E31837"

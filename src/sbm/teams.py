@@ -181,6 +181,41 @@ CFB_NICKNAMES: dict[str, list[str]] = {
     "wyoming": ["cowboys"],
 }
 
+NFL_CONFERENCE: dict[str, str] = {
+    "BUF": "AFC",
+    "MIA": "AFC",
+    "NE": "AFC",
+    "NYJ": "AFC",
+    "BAL": "AFC",
+    "CIN": "AFC",
+    "CLE": "AFC",
+    "PIT": "AFC",
+    "HOU": "AFC",
+    "IND": "AFC",
+    "JAX": "AFC",
+    "TEN": "AFC",
+    "DEN": "AFC",
+    "KC": "AFC",
+    "LAC": "AFC",
+    "LV": "AFC",
+    "DAL": "NFC",
+    "NYG": "NFC",
+    "PHI": "NFC",
+    "WAS": "NFC",
+    "CHI": "NFC",
+    "DET": "NFC",
+    "GB": "NFC",
+    "MIN": "NFC",
+    "ATL": "NFC",
+    "CAR": "NFC",
+    "NO": "NFC",
+    "TB": "NFC",
+    "ARI": "NFC",
+    "LA": "NFC",
+    "SEA": "NFC",
+    "SF": "NFC",
+}
+
 NFL_DISPLAY: dict[str, str] = {
     "ARI": "Arizona Cardinals",
     "ATL": "Atlanta Falcons",
@@ -361,6 +396,374 @@ CFB_ABBREV: dict[str, str] = {
 
 def _cfb_key(team: str) -> str:
     return team.strip().lower().replace("san jose state", "san josé state")
+
+
+def nfl_conference(team: str) -> str | None:
+    code = abbrev(League.NFL, team)
+    return NFL_CONFERENCE.get(code)
+
+
+P4_CONFERENCES = frozenset({"B1G", "SEC", "ACC", "Big 12"})
+
+_CFB_CONFERENCE_ALIASES = {
+    "big ten": "B1G",
+    "b1g": "B1G",
+    "big ten conference": "B1G",
+    "sec": "SEC",
+    "southeastern": "SEC",
+    "southeastern conference": "SEC",
+    "acc": "ACC",
+    "atlantic coast": "ACC",
+    "atlantic coast conference": "ACC",
+    "big 12": "Big 12",
+    "big12": "Big 12",
+    "big 12 conference": "Big 12",
+}
+
+
+def normalize_cfb_conference(raw: object | None) -> str | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    key = " ".join(text.lower().replace("-", " ").split())
+    if key in _CFB_CONFERENCE_ALIASES:
+        return _CFB_CONFERENCE_ALIASES[key]
+    return text
+
+
+def is_p4_conference(conference: str | None) -> bool:
+    return conference in P4_CONFERENCES
+
+
+# Exact CFBD school names for the current Predictions roster.
+CFB_P4_CONFERENCE: dict[str, str] = {
+    "Ohio State": "B1G",
+    "Indiana": "B1G",
+    "USC": "B1G",
+    "Penn State": "B1G",
+    "Iowa": "B1G",
+    "Washington": "B1G",
+    "Oregon": "B1G",
+    "UCLA": "B1G",
+    "Michigan": "B1G",
+    "Nebraska": "B1G",
+    "Illinois": "B1G",
+    "Northwestern": "B1G",
+    "Maryland": "B1G",
+    "Wisconsin": "B1G",
+    "Minnesota": "B1G",
+    "Michigan State": "B1G",
+    "Purdue": "B1G",
+    "Rutgers": "B1G",
+    "Ole Miss": "SEC",
+    "Georgia": "SEC",
+    "Texas": "SEC",
+    "Florida": "SEC",
+    "Alabama": "SEC",
+    "LSU": "SEC",
+    "Mississippi State": "SEC",
+    "Vanderbilt": "SEC",
+    "Texas A&M": "SEC",
+    "Tennessee": "SEC",
+    "Kentucky": "SEC",
+    "Auburn": "SEC",
+    "Missouri": "SEC",
+    "Oklahoma": "SEC",
+    "South Carolina": "SEC",
+    "Arkansas": "SEC",
+    "Miami": "ACC",
+    "Louisville": "ACC",
+    "SMU": "ACC",
+    "Duke": "ACC",
+    "Wake Forest": "ACC",
+    "Pittsburgh": "ACC",
+    "Virginia Tech": "ACC",
+    "California": "ACC",
+    "Virginia": "ACC",
+    "Clemson": "ACC",
+    "North Carolina": "ACC",
+    "NC State": "ACC",
+    "Georgia Tech": "ACC",
+    "Syracuse": "ACC",
+    "Florida State": "ACC",
+    "Boston College": "ACC",
+    "Stanford": "ACC",
+    # Independent, but Predictions files them with the ACC (scheduling agreement).
+    "Notre Dame": "ACC",
+    "BYU": "Big 12",
+    "Texas Tech": "Big 12",
+    "Utah": "Big 12",
+    "Houston": "Big 12",
+    "Arizona State": "Big 12",
+    "Kansas State": "Big 12",
+    "Arizona": "Big 12",
+    "West Virginia": "Big 12",
+    "Cincinnati": "Big 12",
+    "Iowa State": "Big 12",
+    "Oklahoma State": "Big 12",
+    "Colorado": "Big 12",
+    "Baylor": "Big 12",
+    "TCU": "Big 12",
+    "UCF": "Big 12",
+    "Kansas": "Big 12",
+}
+
+
+def cfb_p4_conference(team: str) -> str | None:
+    return CFB_P4_CONFERENCE.get(team.strip())
+
+
+NFL_PRIMARY: dict[str, str] = {
+    "ARI": "#97233F",
+    "ATL": "#A71930",
+    "BAL": "#241773",
+    "BUF": "#00338D",
+    "CAR": "#0085CA",
+    "CHI": "#0B162A",
+    "CIN": "#FB4F14",
+    "CLE": "#311D00",
+    "DAL": "#003594",
+    "DEN": "#FB4F14",
+    "DET": "#0076B6",
+    "GB": "#203731",
+    "HOU": "#03202F",
+    "IND": "#002C5F",
+    "JAX": "#006778",
+    "KC": "#E31837",
+    "LA": "#003594",
+    "LAC": "#0080C6",
+    "LV": "#A5ACAF",
+    "MIA": "#008E97",
+    "MIN": "#4F2683",
+    "NE": "#002244",
+    "NO": "#D3BC8D",
+    "NYG": "#0B2265",
+    "NYJ": "#125740",
+    "PHI": "#004C54",
+    "PIT": "#FFB612",
+    "SEA": "#002244",
+    "SF": "#AA0000",
+    "TB": "#D50A0A",
+    "TEN": "#0C2340",
+    "WAS": "#5A1414",
+}
+
+NFL_ESPN_SLUG: dict[str, str] = {
+    "LA": "lar",
+    "WAS": "wsh",
+}
+
+CFB_ESPN_ID: dict[str, int] = {
+    "Alabama": 333,
+    "Arizona": 12,
+    "Arizona State": 9,
+    "Arkansas": 8,
+    "Auburn": 2,
+    "Baylor": 239,
+    "Boston College": 103,
+    "BYU": 252,
+    "California": 25,
+    "Cincinnati": 2132,
+    "Clemson": 228,
+    "Colorado": 38,
+    "Duke": 150,
+    "Florida": 57,
+    "Florida State": 52,
+    "Georgia": 61,
+    "Georgia Tech": 59,
+    "Houston": 248,
+    "Illinois": 356,
+    "Indiana": 84,
+    "Iowa": 2294,
+    "Iowa State": 66,
+    "Kansas": 2305,
+    "Kansas State": 2306,
+    "Kentucky": 96,
+    "Louisville": 97,
+    "LSU": 99,
+    "Maryland": 120,
+    "Miami": 2390,
+    "Michigan": 130,
+    "Michigan State": 127,
+    "Minnesota": 135,
+    "Mississippi State": 344,
+    "Missouri": 142,
+    "NC State": 152,
+    "Nebraska": 158,
+    "North Carolina": 153,
+    "Northwestern": 77,
+    "Notre Dame": 87,
+    "Ohio State": 194,
+    "Oklahoma": 201,
+    "Oklahoma State": 197,
+    "Ole Miss": 145,
+    "Oregon": 2483,
+    "Penn State": 213,
+    "Pittsburgh": 221,
+    "Purdue": 2509,
+    "Rutgers": 164,
+    "SMU": 2567,
+    "South Carolina": 2579,
+    "Stanford": 24,
+    "Syracuse": 183,
+    "TCU": 2628,
+    "Tennessee": 2633,
+    "Texas": 251,
+    "Texas A&M": 245,
+    "Texas Tech": 2641,
+    "UCF": 2116,
+    "UCLA": 26,
+    "USC": 30,
+    "Utah": 254,
+    "Vanderbilt": 238,
+    "Virginia": 258,
+    "Virginia Tech": 259,
+    "Wake Forest": 154,
+    "Washington": 264,
+    "West Virginia": 277,
+    "Wisconsin": 275,
+}
+
+# School primaries for the Predictions CFB roster (same role as NFL_PRIMARY).
+CFB_PRIMARY: dict[str, str] = {
+    "Alabama": "#9E1B32",
+    "Arizona": "#CC0033",
+    "Arizona State": "#8C1D40",
+    "Arkansas": "#9D2235",
+    "Auburn": "#0C2340",
+    "Baylor": "#154734",
+    "Boston College": "#8A100B",
+    "BYU": "#002E5D",
+    "California": "#003262",
+    "Cincinnati": "#E00122",
+    "Clemson": "#F56600",
+    "Colorado": "#CFB87C",
+    "Duke": "#003087",
+    "Florida": "#0021A5",
+    "Florida State": "#782F40",
+    "Georgia": "#BA0C2F",
+    "Georgia Tech": "#B3A369",
+    "Houston": "#C8102E",
+    "Illinois": "#E84A27",
+    "Indiana": "#990000",
+    "Iowa": "#FFCD00",
+    "Iowa State": "#C8102E",
+    "Kansas": "#0051BA",
+    "Kansas State": "#512888",
+    "Kentucky": "#0033A0",
+    "Louisville": "#AD0000",
+    "LSU": "#461D7C",
+    "Maryland": "#E03A3E",
+    "Miami": "#F47321",
+    "Michigan": "#00274C",
+    "Michigan State": "#18453B",
+    "Minnesota": "#7A0019",
+    "Mississippi State": "#660000",
+    "Missouri": "#F1B82D",
+    "NC State": "#CC0000",
+    "Nebraska": "#E41C38",
+    "North Carolina": "#7BAFD4",
+    "Northwestern": "#4E2A84",
+    "Notre Dame": "#0C2340",
+    "Ohio State": "#BB0000",
+    "Oklahoma": "#841617",
+    "Oklahoma State": "#FF7300",
+    "Ole Miss": "#CE1126",
+    "Oregon": "#154733",
+    "Penn State": "#041E42",
+    "Pittsburgh": "#003594",
+    "Purdue": "#CEB888",
+    "Rutgers": "#CC0033",
+    "SMU": "#C8102E",
+    "South Carolina": "#73000A",
+    "Stanford": "#8C1515",
+    "Syracuse": "#F76900",
+    "TCU": "#4D1979",
+    "Tennessee": "#FF8200",
+    "Texas": "#BF5700",
+    "Texas A&M": "#500000",
+    "Texas Tech": "#CC0000",
+    "UCF": "#BA9B37",
+    "UCLA": "#2D68C4",
+    "USC": "#990000",
+    "Utah": "#CC0000",
+    "Vanderbilt": "#866D4B",
+    "Virginia": "#232D4B",
+    "Virginia Tech": "#630031",
+    "Wake Forest": "#9E7E38",
+    "Washington": "#4B2E83",
+    "West Virginia": "#002855",
+    "Wisconsin": "#C5050C",
+}
+
+CONFERENCE_PRIMARY: dict[str, str] = {
+    "AFC": "#00338D",
+    "NFC": "#9B2743",
+    "B1G": "#0088CE",
+    "SEC": "#9D2235",
+    "ACC": "#013CA6",
+    "Big 12": "#C41230",
+}
+
+
+def logo_url(league: League, team: str) -> str | None:
+    if league == League.NFL:
+        code = abbrev(league, team)
+        slug = NFL_ESPN_SLUG.get(code, code.lower())
+        return f"https://a.espncdn.com/i/teamlogos/nfl/500/{slug}.png"
+    espn_id = CFB_ESPN_ID.get(team.strip())
+    if espn_id is None:
+        return None
+    return f"https://a.espncdn.com/i/teamlogos/ncaa/500/{espn_id}.png"
+
+
+TTUN_DISPLAY = "The Team Up North"
+TTUN_ABBREV = "TTUN"
+TTUN_MARK = "❌"
+
+
+def _is_ttun(league: League, team: str) -> bool:
+    return league == League.CFB and _cfb_key(team) == "michigan"
+
+
+def render_display_name(league: League, team: str) -> str:
+    if _is_ttun(league, team):
+        return TTUN_DISPLAY
+    return display_name(league, team)
+
+
+def render_abbrev(league: League, team: str) -> str:
+    if _is_ttun(league, team):
+        return TTUN_ABBREV
+    return abbrev(league, team)
+
+
+def render_logo_url(league: League, team: str) -> str | None:
+    if _is_ttun(league, team):
+        return None
+    return logo_url(league, team)
+
+
+def render_logo_mark(league: League, team: str) -> str | None:
+    if _is_ttun(league, team):
+        return TTUN_MARK
+    return None
+
+
+def team_color(league: League, team: str, conference: str | None = None) -> str | None:
+    if league == League.NFL:
+        return NFL_PRIMARY.get(abbrev(league, team))
+    school = CFB_PRIMARY.get(team.strip())
+    if school:
+        return school
+    if conference and conference in CONFERENCE_PRIMARY:
+        return CONFERENCE_PRIMARY[conference]
+    mapped = cfb_p4_conference(team)
+    if mapped:
+        return CONFERENCE_PRIMARY.get(mapped)
+    return None
 
 
 def abbrev(league: League, team: str) -> str:

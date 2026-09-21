@@ -8,7 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header>
@@ -31,37 +30,6 @@
         <input id="team-search" type="search" placeholder="Find a team (Steelers, Pitt, Michigan…)" autocomplete="off" />
       </label>
     </div>
-    {% if not look_only %}
-    <section class="stats">
-      <div class="stat"><span>System picks</span><strong>{{ summary.system.n_picks }}</strong></div>
-      <div class="stat"><span>System units</span><strong>{{ summary.system.units }}</strong></div>
-      <div class="stat"><span>System record</span><strong>{{ summary.system.wins }}-{{ summary.system.losses }}-{{ summary.system.pushes }}</strong></div>
-      <div class="stat"><span>Gut picks</span><strong>{{ summary.gut.n_picks }}</strong></div>
-      <div class="stat"><span>Gut units</span><strong>{{ summary.gut.units }}</strong></div>
-      <div class="stat"><span>Gut record</span><strong>{{ summary.gut.wins }}-{{ summary.gut.losses }}-{{ summary.gut.pushes }}</strong></div>
-      <div class="stat"><span>Brier</span><strong>{{ summary.brier if summary.brier is not none else "—" }}</strong></div>
-    </section>
-    <section class="panel book-panel">
-      <h2>Book</h2>
-      {% if book %}
-      <ul class="gut-book">
-        {% for row in book %}
-        <li>
-          <a href="#game-{{ row.game_id }}">{{ row.label }}</a>
-          <span class="book-meta">
-            {% if row.settled %}<span class="muted">{{ row.result }}</span>{% else %}<span class="muted">open</span>{% endif %}
-            {% if not row.settled %}
-            <button type="button" class="drop-ticket" data-game="{{ row.game_id }}" data-market="{{ row.market }}" data-column="{{ row.column }}">Remove</button>
-            {% endif %}
-          </span>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p class="empty">No booked sides yet. System is the model ticket; Gut is anything you take instead or besides. Unmarked markets are not bets.</p>
-      {% endif %}
-    </section>
-    {% endif %}
     <div class="grid">
       <section class="panel board-panel">
         <h2>This week’s board{% if slate_label %} <span class="slate-label">{{ slate_label }}</span>{% endif %}</h2>
@@ -70,14 +38,15 @@
         {% elif cards %}
         <div class="game-list" id="game-list">
           {% for card in cards %}
-          <article id="game-{{ card.game_id }}" class="game-card{% if card.has_pick and not card.noisy %} has-pick{% endif %}{% if card.has_gut %} has-gut{% endif %}{% if card.noisy %} noisy{% endif %}" data-search="{{ card.search_text|e }}">
+          <article id="game-{{ card.game_id }}" class="game-card fill-{{ card.fill }}{% if card.warning %} has-warning{% endif %}" data-search="{{ card.search_text|e }}">
             <header class="game-meta">
               <span class="league-chip">{{ card.league|upper }}</span>
               <span>{{ card.season }} · Week {{ card.week }}</span>
               {% if card.kickoff %}<time datetime="{{ card.kickoff }}">{{ card.kickoff.replace('T', ' ')[:16] }} UTC</time>{% endif %}
               {% if card.is_final %}<span class="final-chip">Final</span>{% endif %}
-              {% if card.noisy %}<span class="noise-chip">Noisy |edge|</span>{% endif %}
-              {% if card.has_gut %}<span class="gut-chip">Gut {{ card.gut_label }}</span>{% endif %}
+              {% for chip in card.chips %}
+              <span class="info-chip{% if chip.startswith('Warning') %} warning-chip{% elif chip == 'Both fade' %} both-chip{% elif chip == 'You fade' %} you-chip{% elif chip == 'Model fade' %} model-chip{% endif %}">{{ chip }}</span>
+              {% endfor %}
             </header>
             <div class="matchup">
               <div class="team away">
@@ -94,38 +63,39 @@
             </div>
             <ul class="markets">
               {% for m in card.markets %}
-              <li class="market{% if m.model_ticket and not m.noisy %} picked{% endif %}{% if m.gut and not m.gut.skipped %} has-gut{% endif %}{% if m.noisy %} noisy{% endif %}">
+              <li class="market fill-{{ m.fill }}{% if m.warning %} has-warning{% endif %}">
                 <div class="market-name">{{ m.label }}</div>
                 <div class="market-lines">
                   <span><em>Model</em> {{ m.model or "—" }}</span>
                   <span><em>Market</em> {{ m.market or "—" }}</span>
                 </div>
-                {% if m.noisy or m.early_season %}
-                <div class="honesty-flag">
-                  {% if m.noisy %}Noisy edge — not a lock.{% endif %}
-                  {% if m.early_season %} Early-season CFB.{% endif %}
-                </div>
-                {% endif %}
+                {% for chip in m.chips %}
+                <div class="honesty-flag{% if chip.startswith('Warning') %} warning-text{% endif %}">{{ chip }}</div>
+                {% endfor %}
                 {% if m.model_ticket %}
-                <div class="pick-flag{% if m.noisy %} noisy-text{% endif %}">
+                <div class="pick-flag">
                   Model ticket {{ m.model_ticket.ticket }}
                   · edge {{ m.model_ticket.edge }}
                   · {{ m.model_ticket.american_odds }}
                 </div>
                 {% endif %}
-                {% if m.system %}
-                <div class="pick-flag">Booked system {{ m.system.ticket }}</div>
-                {% endif %}
-                {% if m.gut %}
-                <div class="pick-flag gut-flag">Gut {{ m.gut.ticket }}</div>
-                {% endif %}
-                {% if m.open_for_marks and not look_only %}
-                <div class="mark-row" data-game="{{ card.game_id }}" data-market="{{ m.name }}">
-                  {% if m.model_ticket %}
-                  <button type="button" data-column="system" data-side="{{ m.model_ticket.side }}">System {{ m.model_ticket.ticket }}</button>
-                  {% endif %}
-                  {% for opt in m.side_options %}
-                  <button type="button" data-column="gut" data-side="{{ opt.side }}">Gut {{ opt.label }}</button>
+                {% if m.open_for_wager %}
+                <div class="mark-row" data-game="{{ card.game_id }}">
+                  {% for opt in m.wager_options %}
+                  <button
+                    type="button"
+                    class="wager-open"
+                    data-game="{{ card.game_id }}"
+                    data-league="{{ card.league }}"
+                    data-season="{{ card.season }}"
+                    data-week="{{ card.week }}"
+                    data-market="{{ m.name }}"
+                    data-side="{{ opt.side }}"
+                    data-team="{{ opt.team_or_side }}"
+                    data-opponent="{{ opt.opponent }}"
+                    data-line="{{ opt.market_line if opt.market_line is not none else '' }}"
+                    data-american="{{ opt.american_odds if opt.american_odds is not none else '' }}"
+                  >Log {{ opt.label }}</button>
                   {% endfor %}
                 </div>
                 {% endif %}
@@ -141,8 +111,16 @@
         {% endif %}
       </section>
       <section class="panel">
-        <h2>Model tickets{% if look_only %} <span class="slate-label">(not your bankroll)</span>{% endif %}</h2>
-        <canvas id="bankroll" height="220"></canvas>
+        <h2>Model tickets <span class="slate-label">(look, don’t book)</span></h2>
+        {% if picks %}
+        <ul class="model-ticket-list">
+          {% for p in picks %}
+          <li>{{ p.league|upper }} w{{ p.week }} {{ p.market }} {{ p.team_or_side }} · edge {{ p.edge }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No model tickets on this slate.</p>
+        {% endif %}
       </section>
       {% if errors %}
       <section class="panel error-panel">
@@ -172,92 +150,28 @@
       {% endif %}
     </div>
   </main>
+  {% include "ticket_modal.html" %}
   <script>
-    const curve = {{ curve | tojson }};
-    const ctx = document.getElementById("bankroll");
-    if (ctx && typeof Chart !== "undefined") {
-    new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: curve.map(p => p.index),
-        datasets: [{
-          label: "Units",
-          data: curve.map(p => p.cumulative_units),
-          borderColor: "#58a6ff",
-          backgroundColor: "rgba(88,166,255,0.15)",
-          fill: true,
-          tension: 0.2,
-          pointRadius: 0,
-        }]
-      },
-      options: {
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-          y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } }
-        }
-      }
-    });
-    }
-
-    const boardMode = {{ mode | tojson }};
-    document.addEventListener("click", async (event) => {
-      const drop = event.target.closest(".drop-ticket");
-      if (drop) {
-        event.preventDefault();
-        const payload = {
-          mode: boardMode,
-          game_id: drop.getAttribute("data-game"),
-          market: drop.getAttribute("data-market"),
-          column: drop.getAttribute("data-column"),
-        };
-        const resp = await fetch("/api/unmark", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!resp.ok) {
-          const text = await resp.text();
-          window.alert(text || "Remove failed");
-          return;
-        }
-        window.location.reload();
-        return;
-      }
-      const btn = event.target.closest(".mark-row button");
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest(".wager-open");
       if (!btn) return;
-      const row = btn.closest(".mark-row");
-      if (!row) return;
       event.preventDefault();
-      const payload = {
-        mode: boardMode,
-        game_id: row.getAttribute("data-game"),
-        market: row.getAttribute("data-market"),
-        column: btn.getAttribute("data-column"),
-        skipped: false,
+      const line = btn.getAttribute("data-line");
+      const american = btn.getAttribute("data-american");
+      window.openTicketModal({
+        sportsbook: "Novig",
+        league: btn.getAttribute("data-league"),
+        season: btn.getAttribute("data-season"),
+        week: btn.getAttribute("data-week"),
+        market: btn.getAttribute("data-market"),
         side: btn.getAttribute("data-side"),
-      };
-      const resp = await fetch("/api/mark", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        team_or_side: btn.getAttribute("data-team"),
+        opponent: btn.getAttribute("data-opponent"),
+        market_line: line === "" ? null : line,
+        american_odds: american === "" ? null : american,
+        game_id: btn.getAttribute("data-game"),
       });
-      if (!resp.ok) {
-        const text = await resp.text();
-        window.alert(text || "Mark failed");
-        return;
-      }
-      const id = row.getAttribute("data-game");
-      sessionStorage.setItem("sbm-scroll-game", id || "");
-      window.location.reload();
     });
-
-    const scrollId = sessionStorage.getItem("sbm-scroll-game");
-    if (scrollId) {
-      sessionStorage.removeItem("sbm-scroll-game");
-      const marked = document.getElementById("game-" + scrollId);
-      if (marked) marked.scrollIntoView({ block: "center" });
-    }
 
     const search = document.getElementById("team-search");
     const list = document.getElementById("game-list");

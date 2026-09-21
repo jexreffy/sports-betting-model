@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from sbm.schema import Game, League
+from sbm.teams import NFL_CONFERENCE
+
+EASTERN = ZoneInfo("America/New_York")
 
 
 def _to_int(value: object) -> int | None:
@@ -34,10 +38,10 @@ def _kickoff(row: pd.Series) -> datetime | None:
     time_s = "00:00" if time is None or pd.isna(time) else str(time)
     try:
         dt = datetime.fromisoformat(f"{day_s}T{time_s}")
-        return dt.replace(tzinfo=UTC)
+        return dt.replace(tzinfo=EASTERN)
     except ValueError:
         try:
-            return datetime.strptime(day_s, "%Y-%m-%d").replace(tzinfo=UTC)
+            return datetime.strptime(day_s, "%Y-%m-%d").replace(tzinfo=EASTERN)
         except ValueError:
             return None
 
@@ -48,6 +52,14 @@ def _home_spread(spread_line: object) -> float | None:
     if margin is None:
         return None
     return -margin
+
+
+def _venue(row: pd.Series) -> str | None:
+    stadium = row.get("stadium")
+    if stadium is None or (isinstance(stadium, float) and pd.isna(stadium)):
+        return None
+    text = str(stadium).strip()
+    return text or None
 
 
 def schedules_to_games(df: pd.DataFrame) -> list[Game]:
@@ -88,6 +100,9 @@ def schedules_to_games(df: pd.DataFrame) -> list[Game]:
                 away_moneyline=_to_int(row.get("away_moneyline")),
                 home_rest_days=_to_int(row.get("home_rest")),
                 away_rest_days=_to_int(row.get("away_rest")),
+                venue=_venue(row),
+                home_conference=NFL_CONFERENCE.get(home),
+                away_conference=NFL_CONFERENCE.get(away),
             )
         )
     return games

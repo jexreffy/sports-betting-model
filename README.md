@@ -1,36 +1,40 @@
-# SBM — NFL + CFB research model + 2026 Journal
+# SBM — NFL + CFB research, Predictions, and 2026 Journal
 
-A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**; **Research** (Simulation) is the model’s price sheet and historical lab.
+A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**. **Research** is this week's model vs market. **Predictions** is your current-year W/L take on NFL and P4 CFB.
 
-## Two books
+## Surfaces
 
-| Book | What it is | Store |
+| Surface | What it is | Store |
 | --- | --- | --- |
-| **Research (Simulation)** | Walk-forward backtest, later tune, and this week’s **model slate**. Not your money. Look, don’t book. | `data/simulation/historical_ledger.jsonl` (backtest). Weekly paper `ledger.jsonl` is not the product. |
+| **Research** | This week's Elo vs close. Log a ticket from a market button. Not a paper book. | Elo from `data/raw/` |
+| **Predictions** | Current-year schedule W/L takes (NFL + B1G/SEC/ACC/Big 12). Results fill in; picks never auto-flip. | `data/predictions/{season}.json` |
 | **Journal** | What you actually bet in 2026 (Novig today): dollars, parlays, early cash-out, year hit/miss | `data/journal/tickets.jsonl` |
 
-Ledgers cannot write across books. 2026 is still **hands-off** for historical P&L.
+`sbm simulate backtest` is a buried historical lab. It is not a weekly book. 2026 stays **hands-off** for historical P&L.
 
 ## Weekly playbook
 
-**While you bet**
-
 1. `sbm ingest` if the slate looks stale.
-2. Open **Research** (`/research`). Read model tickets and edges. Do not fill a paper bankroll there — it does not train Elo.
-3. Bet at Novig (or anywhere) however you actually play.
-4. Log that ticket on **Journal** (`/` or `/journal`): sportsbook, dollars, odds, legs.
-
-**After games (leave MNF open until it is final)**
-
-1. `sbm ingest`
-2. `sbm journal settle`
-3. Optional: glance at Research vs Journal if you faded the model. That is a personal scorecard, not training.
+2. Open **Research** (`/` or `/research`). Read model tickets and colors. Log real tickets into Journal from the market buttons.
+3. **Predictions** (`/predictions`): click remaining winners. Power rankings stay outside the app — paste them in chat and the agent fills remaining games. CFB non-conference leftovers stay flagged for a gut call.
+4. **Journal** (`/journal`): search and filter the book. After games, `sbm journal settle`.
 
 **A few times a year**
 
 ```bash
 sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
 ```
+
+## Research colors
+
+Warning is a red badge/border, not a fill. Fill is disagreement with the market:
+
+- **Orange** — your predicted winner is not the market favorite
+- **Yellow** — the model has a ticket
+- **Green** — both
+- **Red chip** — noisy `|edge| > 8`, early-season CFB (week < 4), or international NFL
+
+Totals use yellow/green from the model only. Missing predictions are not a fade.
 
 ## Honesty rules
 
@@ -56,14 +60,23 @@ sbm ingest --league nfl --start 2015 --end 2026
 sbm ingest --league cfb --start 2015 --end 2026   # needs CFBD_API_KEY
 ```
 
-## Research (Simulation)
+## Research CLI (buried lab)
 
 ```bash
 sbm simulate bake-sample
 sbm simulate backtest   # → data/simulation/historical_ledger.jsonl
-sbm simulate picks      # prints / optionally papers the model slate (not Journal)
-sbm simulate settle     # grades leftover paper diary rows only
+sbm simulate picks      # prints the model slate (does not write Journal)
 ```
+
+## Predictions
+
+```bash
+sbm predictions init
+sbm predictions sync
+sbm predictions set --game-id 2026_04_BUF_KC --winner BUF
+```
+
+Power-rank fill is not a dashboard form. Paste an ordered list in chat; the agent applies it (existing clicks stay). CFB non-conference games stay leftover.
 
 ## Journal
 
@@ -84,7 +97,7 @@ sbm serve                 # 127.0.0.1:8000, no reload
 sbm serve --reload        # pick up Python edits
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Journal). **Research** is `/research`.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Research). **Predictions** is `/predictions`. **Journal** is `/journal`.
 
 Ingest of a season range **merges** into the existing JSONL: only those seasons are replaced.
 
@@ -103,7 +116,7 @@ Checked-in artifacts from `sbm simulate bake-sample` (not 2026 tickets):
 - Margin → win probability with a normal CDF.
 - Edges: 1.5 points on spread/total; moneyline EV ≥ 3% after juice.
 
-No gradient boosting until this baseline is calibrated.
+No gradient boosting until this baseline is calibrated. No in-app LLM.
 
 ## Tests
 
@@ -121,7 +134,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-- Persist `data/simulation` and `data/journal` as two volumes.
+- Persist `data/simulation`, `data/journal`, `data/predictions`, and `data/raw` as volumes.
 - Pass `CFBD_API_KEY` as an env var; never bake it into the image.
 
 v1 does **not** provision a paid host.
@@ -131,11 +144,12 @@ v1 does **not** provision a paid host.
 - `src/sbm/models/` — Elo, totals, combined engine
 - `src/sbm/data/` — NFL / CFB adapters + JSONL store
 - `src/sbm/backtest.py` — walk-forward + current-week slate
-- `src/sbm/paper.py` — simulation paper ledger
+- `src/sbm/paper.py` — historical simulation ledger only
 - `src/sbm/journal.py` — real 2026 tickets
+- `src/sbm/predictions.py` — current-year W/L takes
 - `src/sbm/providers/lines.py` — swappable market lines
 - `src/sbm/web/` — FastAPI + Jinja dashboard
-- `tests/` — EV math, leakage, ledger isolation, journal grade
+- `tests/` — EV math, leakage, ledger isolation, journal grade, predictions
 
 ## Disclaimer
 

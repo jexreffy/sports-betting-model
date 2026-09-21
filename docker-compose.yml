@@ -10,6 +10,7 @@ services:
     volumes:
       - simulation-data:/app/data/simulation
       - journal-data:/app/data/journal
+      - predictions-data:/app/data/predictions
       - raw-data:/app/data/raw
     command: ["sbm", "serve", "--host", "0.0.0.0", "--port", "8000"]
 
@@ -23,10 +24,12 @@ services:
     volumes:
       - simulation-data:/app/data/simulation
       - journal-data:/app/data/journal
+      - predictions-data:/app/data/predictions
       - raw-data:/app/data/raw
     command: ["sbm", "ingest", "--league", "all"]
 
 volumes:
   simulation-data:
   journal-data:
+  predictions-data:
   raw-data:

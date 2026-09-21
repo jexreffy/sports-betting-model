@@ -12,6 +12,7 @@ data/raw/
 data/simulation/
 data/live/
 data/journal/
+data/predictions/
 data/cache/
 !data/.gitkeep
 !reports/sample/**

@@ -31,7 +31,34 @@
     </section>
 
     <section class="panel book-panel">
-      <h2>{{ season }} tickets</h2>
+      <div class="panel-head">
+        <h2>{{ season }} tickets</h2>
+        <button type="button" id="open-add-ticket">Add ticket</button>
+      </div>
+      <div class="filters journal-filters">
+        <label>Search
+          <input id="journal-search" type="search" placeholder="Team, notes, sportsbook" autocomplete="off" />
+        </label>
+        <label>Status
+          <select id="filter-status">
+            <option value="">all</option>
+            <option value="open">open</option>
+            <option value="hit">hit</option>
+            <option value="miss">miss</option>
+            <option value="cashed">cashed</option>
+          </select>
+        </label>
+        <label>League
+          <select id="filter-league">
+            <option value="">all</option>
+            <option value="nfl">nfl</option>
+            <option value="cfb">cfb</option>
+          </select>
+        </label>
+        <label>Week
+          <input id="filter-week" type="number" min="1" placeholder="any" />
+        </label>
+      </div>
       {% if tickets %}
       <table class="journal-table">
         <thead>
@@ -47,7 +74,15 @@
         </thead>
         <tbody>
           {% for t in tickets %}
-          <tr>
+          {% set leagues = t.legs | map(attribute='league') | list %}
+          {% set weeks = t.legs | map(attribute='week') | list %}
+          <tr
+            class="journal-row"
+            data-status="{{ t.status }}"
+            data-league="{{ leagues | join(' ') }}"
+            data-week="{{ weeks | join(' ') }}"
+            data-search="{{ t.sportsbook }} {{ t.notes or '' }} {% for leg in t.legs %}{{ leg.team_or_side }} {{ leg.opponent or '' }} {% endfor %}"
+          >
             <td>{{ t.status }}</td>
             <td>{{ t.sportsbook }}</td>
             <td>
@@ -74,97 +109,48 @@
           {% endfor %}
         </tbody>
       </table>
+      <p id="journal-empty-filter" class="empty" hidden>No tickets match those filters.</p>
       {% else %}
-      <p class="empty">No tickets this season yet. Add one below or run <code>sbm journal seed-novig</code>.</p>
+      <p class="empty">No tickets this season yet. Add one or run <code>sbm journal seed-novig</code>.</p>
       {% endif %}
     </section>
-
-    <section class="panel">
-      <h2>Log a ticket</h2>
-      <form id="add-ticket" class="ticket-form">
-        <label>Sportsbook <input name="sportsbook" value="Novig" /></label>
-        <label>Stake $ <input name="stake_dollars" type="number" step="0.01" required /></label>
-        <label>American odds <input name="american_odds" type="number" placeholder="-110" /></label>
-        <label>Implied (0-1) <input name="implied_prob" type="number" step="0.001" min="0" max="1" /></label>
-        <label>Kind
-          <select name="kind">
-            <option value="straight">straight</option>
-            <option value="parlay">parlay</option>
-          </select>
-        </label>
-        <label>League
-          <select name="league">
-            <option value="nfl">nfl</option>
-            <option value="cfb">cfb</option>
-          </select>
-        </label>
-        <label>Week <input name="week" type="number" value="1" /></label>
-        <label>Team / side <input name="team_or_side" required placeholder="BUF" /></label>
-        <label>Opponent <input name="opponent" placeholder="DET" /></label>
-        <label>Market
-          <select name="market">
-            <option value="moneyline">moneyline</option>
-            <option value="spread">spread</option>
-            <option value="total">total</option>
-            <option value="">prop / other</option>
-          </select>
-        </label>
-        <label>Side
-          <select name="side">
-            <option value="away">away</option>
-            <option value="home">home</option>
-            <option value="over">over</option>
-            <option value="under">under</option>
-            <option value="">prop / other</option>
-          </select>
-        </label>
-        <label>Line (your slip) <input name="market_line" type="number" step="0.5" /></label>
-        <label>Game id <input name="game_id" placeholder="optional" /></label>
-        <label class="span-2">Notes <input name="notes" /></label>
-        <button type="submit" class="span-2">Add ticket</button>
-      </form>
-      <p class="muted">Parlays: add the first leg here, then use <code>sbm journal add --extra-leg</code> for more legs, or POST JSON to <code>/api/journal/tickets</code>.</p>
-    </section>
   </main>
+  {% include "ticket_modal.html" %}
   <script>
-    const form = document.getElementById("add-ticket");
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const data = new FormData(form);
-      const implied = data.get("implied_prob");
-      const american = data.get("american_odds");
-      const line = data.get("market_line");
-      const market = data.get("market");
-      const side = data.get("side");
-      const payload = {
-        sportsbook: data.get("sportsbook"),
-        stake_dollars: Number(data.get("stake_dollars")),
-        american_odds: american ? Number(american) : null,
-        implied_prob: implied ? Number(implied) : null,
-        kind: data.get("kind"),
-        notes: data.get("notes") || null,
-        legs: [{
-          league: data.get("league"),
-          season: {{ season }},
-          week: Number(data.get("week") || 1),
-          team_or_side: data.get("team_or_side"),
-          opponent: data.get("opponent") || null,
-          market: market || null,
-          side: side || null,
-          market_line: line ? Number(line) : null,
-          game_id: data.get("game_id") || null,
-        }],
-      };
-      const resp = await fetch("/api/journal/tickets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+    document.getElementById("open-add-ticket")?.addEventListener("click", () => {
+      window.openTicketModal({ season: {{ season }}, sportsbook: "Novig" });
+    });
+
+    const search = document.getElementById("journal-search");
+    const status = document.getElementById("filter-status");
+    const league = document.getElementById("filter-league");
+    const week = document.getElementById("filter-week");
+    const empty = document.getElementById("journal-empty-filter");
+    function applyFilters() {
+      const q = (search?.value || "").trim().toLowerCase();
+      const st = (status?.value || "").toLowerCase();
+      const lg = (league?.value || "").toLowerCase();
+      const wk = (week?.value || "").trim();
+      let shown = 0;
+      document.querySelectorAll(".journal-row").forEach((row) => {
+        const hay = (row.getAttribute("data-search") || "").toLowerCase();
+        const rowStatus = (row.getAttribute("data-status") || "").toLowerCase();
+        const rowLeague = (row.getAttribute("data-league") || "").toLowerCase();
+        const rowWeek = row.getAttribute("data-week") || "";
+        let ok = true;
+        if (q && !hay.includes(q)) ok = false;
+        if (st && !(st === "cashed" ? rowStatus.includes("cashed") : rowStatus === st)) ok = false;
+        if (lg && !rowLeague.includes(lg)) ok = false;
+        if (wk && !rowWeek.split(/\s+/).includes(wk)) ok = false;
+        row.hidden = !ok;
+        if (ok) shown += 1;
       });
-      if (!resp.ok) {
-        window.alert(await resp.text());
-        return;
-      }
-      window.location.reload();
+      if (empty) empty.hidden = shown > 0;
+    }
+    [search, status, league, week].forEach((el) => {
+      if (!el) return;
+      el.addEventListener("input", applyFilters);
+      el.addEventListener("change", applyFilters);
     });
 
     document.querySelectorAll(".cashout-form").forEach((el) => {

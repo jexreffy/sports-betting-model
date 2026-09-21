@@ -4,7 +4,7 @@ The queue for this repo. One now-item at a time unless jexreffy says otherwise.
 
 ## Now
 
-- [x] **Journal (was Live)** — Isolated 2026 real-money log: dollars, parlays, cash-out, year hit/miss. Research stays look-don’t-book.
+- [x] **Predictions + Research board** — Current-year W/L takes, Research colors, Journal modal/search. Simulation is not a weekly product surface.
 
 ## Next
 
@@ -13,7 +13,7 @@ The queue for this repo. One now-item at a time unless jexreffy says otherwise.
 
 ## Later
 
-- [ ] **Honesty badges** — Flag `|edge| > 8` (especially early CFB) as noisy / early-season, not a green lock.
+- [ ] **Offseason simulation rebuild** — Not today's paper ledger.
 - [ ] **Tune on 2021–23 / confirm 2024–25** — Only after the error report exists.
 
 ## Not now
@@ -23,3 +23,5 @@ The queue for this repo. One now-item at a time unless jexreffy says otherwise.
 - Props as first-class auto-grade markets
 - Championship futures
 - Auto-betting / real-money placement
+- In-app LLM / Bedrock
+- Auto-flipping remaining Predictions picks from the heatmap

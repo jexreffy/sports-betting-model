@@ -7,20 +7,17 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from sbm.config import RESEARCH_WINDOWS
 from sbm.journal import Journal, new_ticket_id
 from sbm.mode import Mode, parse_mode
-from sbm.paper import Ledger
-from sbm.paths import ledger_path
-from sbm.schema import League, Leg, Market, Side, StakeColumn, Ticket, TicketKind
-from sbm.teams import book_ticket_label
+from sbm.schema import League, Leg, Ticket, TicketKind
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
-app = FastAPI(title="SBM", description="NFL + CFB research model and 2026 Journal")
+app = FastAPI(title="SBM", description="NFL + CFB research, Predictions, and 2026 Journal")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
@@ -34,24 +31,9 @@ def _mode(value: str) -> Mode:
 def _nav() -> list[dict[str, str]]:
     return [
         {"href": "/research", "label": "Research", "key": "research"},
+        {"href": "/predictions", "label": "Predictions", "key": "predictions"},
         {"href": "/journal", "label": "Journal", "key": "journal"},
     ]
-
-
-class MarkRequest(BaseModel):
-    mode: str
-    game_id: str
-    market: str
-    column: str
-    skipped: bool = False
-    side: str | None = Field(default=None)
-
-
-class UnmarkRequest(BaseModel):
-    mode: str
-    game_id: str
-    market: str
-    column: str
 
 
 class JournalAddRequest(BaseModel):
@@ -75,19 +57,41 @@ class JournalDropRequest(BaseModel):
     ticket_id: str
 
 
-def _board_payload(mode: Mode, league: str | None = None) -> dict:
+class PredictionsSetRequest(BaseModel):
+    season: int = RESEARCH_WINDOWS.hands_off
+    game_id: str
+    predicted_winner: str
+
+
+class PredictionsNoteRequest(BaseModel):
+    season: int = RESEARCH_WINDOWS.hands_off
+    team: str
+    league: str
+    note: str | None = None
+
+
+def _board_payload(league: str | None = None) -> dict:
     from sbm.backtest import infer_current_week
     from sbm.data.store import load_games
     from sbm.errors import week_error_report
+    from sbm.predictions import load_book, winners_by_game
     from sbm.web.board import game_cards
 
     lg = League(league) if league in {item.value for item in League} else None
     catalog = load_games()
     games = [g for g in catalog if lg is None or g.league == lg]
-    ledger = Ledger(mode, path=ledger_path(mode))
-    diary_season = RESEARCH_WINDOWS.hands_off if mode == Mode.SIMULATION else None
+    season = RESEARCH_WINDOWS.hands_off
+    book = load_book(season)
     cards, picks = (
-        game_cards(games, mode, lg, ledger=ledger, season=diary_season) if games else ([], [])
+        game_cards(
+            games,
+            Mode.SIMULATION,
+            lg,
+            season=season,
+            predicted_winners=winners_by_game(book),
+        )
+        if games
+        else ([], [])
     )
     slate_bits = []
     seen: set[tuple[str, int, int]] = set()
@@ -97,60 +101,26 @@ def _board_payload(mode: Mode, league: str | None = None) -> dict:
             continue
         seen.add(key)
         slate_bits.append(f"{card['league'].upper()} {card['season']} Week {card['week']}")
-    summary = ledger.summary(season=diary_season)
-    curve = ledger.curve(season=diary_season)
-    games_by_id = {game.game_id: game for game in catalog}
-    book = []
-    for entry in ledger.load():
-        if entry.pick.skipped:
-            continue
-        if diary_season is not None and entry.pick.season != diary_season:
-            continue
-        game = games_by_id.get(entry.pick.game_id)
-        away = game.away_team if game is not None else ""
-        home = game.home_team if game is not None else ""
-        book.append(
-            {
-                "game_id": entry.pick.game_id,
-                "column": entry.pick.column.value,
-                "label": book_ticket_label(
-                    column=entry.pick.column.value,
-                    league=entry.pick.league,
-                    week=entry.pick.week,
-                    away_team=away,
-                    home_team=home,
-                    team_or_side=entry.pick.team_or_side,
-                    market=entry.pick.market.value,
-                ),
-                "settled": entry.result is not None,
-                "result": entry.result,
-                "market": entry.pick.market.value,
-            }
-        )
     errors = None
-    inferred = infer_current_week(games, season=diary_season) if games else None
+    inferred = infer_current_week(games, season=season) if games else None
     if inferred is not None:
         errors = week_error_report(
-            games, season=inferred[0], week=inferred[1], mode=mode, league=lg
+            games, season=inferred[0], week=inferred[1], mode=Mode.SIMULATION, league=lg
         ).model_dump(mode="json")
     return {
-        "mode": mode.value,
+        "mode": Mode.SIMULATION.value,
         "banner": (
-            "Research — model slate only. Look, don't book. Real tickets go in Journal. "
+            "Research — this week's model vs market. Log tickets into Journal. "
             "This does not train Elo."
         ),
         "slate_label": " · ".join(slate_bits) if slate_bits else "No current slate",
         "cards": cards,
         "picks": [p.model_dump(mode="json") for p in picks],
-        "summary": summary.model_dump(),
-        "curve": [p.model_dump() for p in curve],
-        "ledger": [e.model_dump(mode="json") for e in ledger.load()[-80:]],
         "errors": errors,
-        "book": book,
         "has_games": bool(games),
-        "look_only": True,
         "nav": _nav(),
         "active": "research",
+        "season": season,
     }
 
 
@@ -167,6 +137,116 @@ def _journal_payload(season: int) -> dict:
         "tickets": book.rows_for_year(season),
         "nav": _nav(),
         "active": "journal",
+    }
+
+
+def _ensure_predictions(season: int):
+    from sbm.data.store import load_games
+    from sbm.predictions import init_book, load_book, save_book, sync_actuals
+
+    book = load_book(season)
+    games = load_games()
+    if book is None:
+        book = init_book(games, season)
+        save_book(book)
+        return book
+    updated = sync_actuals(book, games)
+    save_book(updated)
+    return updated
+
+
+def _predictions_payload(season: int, conference: str | None = None) -> dict:
+    from sbm.data.store import load_games
+    from sbm.predictions import bye_weeks, format_kickoff_cdt, leftovers_for
+    from sbm.teams import (
+        render_abbrev,
+        render_display_name,
+        render_logo_mark,
+        render_logo_url,
+        search_blob,
+        team_color,
+    )
+    from sbm.web.board import is_international_venue
+
+    book = _ensure_predictions(season)
+    games_by_id = {g.game_id: g for g in load_games() if g.season == season}
+    teams = book.teams
+    if conference:
+        if conference.lower() == "nfl":
+            teams = [t for t in teams if t.league == League.NFL]
+        else:
+            teams = [t for t in teams if t.conference == conference]
+    views = []
+    for team in teams:
+        data = team.model_dump(mode="json")
+        data["logo_url"] = render_logo_url(team.league, team.team)
+        data["logo_mark"] = render_logo_mark(team.league, team.team)
+        data["display_name"] = render_display_name(team.league, team.team)
+        data["abbrev"] = render_abbrev(team.league, team.team)
+        data["color"] = team_color(team.league, team.team, team.conference)
+        data["search_text"] = " ".join(
+            [
+                search_blob(team.league, team.team),
+                render_display_name(team.league, team.team),
+                render_abbrev(team.league, team.team),
+                team.conference,
+            ]
+        ).lower()
+        for row in data["games"]:
+            away = row["opponent"] if row["is_home"] else team.team
+            home = team.team if row["is_home"] else row["opponent"]
+            raw_kick = row.get("kickoff")
+            kickoff = None
+            if isinstance(raw_kick, datetime):
+                kickoff = raw_kick
+            elif isinstance(raw_kick, str) and raw_kick:
+                kickoff = datetime.fromisoformat(raw_kick.replace("Z", "+00:00"))
+            row["away_team"] = away
+            row["home_team"] = home
+            row["away_abbrev"] = render_abbrev(team.league, away)
+            row["home_abbrev"] = render_abbrev(team.league, home)
+            row["opp_display"] = render_display_name(team.league, row["opponent"])
+            row["away_logo_url"] = render_logo_url(team.league, away)
+            row["home_logo_url"] = render_logo_url(team.league, home)
+            row["opp_logo_url"] = render_logo_url(team.league, row["opponent"])
+            row["away_logo_mark"] = render_logo_mark(team.league, away)
+            row["home_logo_mark"] = render_logo_mark(team.league, home)
+            row["opp_logo_mark"] = render_logo_mark(team.league, row["opponent"])
+            row["kickoff_label"] = format_kickoff_cdt(kickoff, team.league)
+            stored = games_by_id.get(row["game_id"])
+            row["international"] = bool(
+                stored is not None and is_international_venue(stored.venue)
+            )
+            row["venue"] = stored.venue if stored is not None else None
+        byes = bye_weeks(team.games, team.league)
+        data["bye_weeks"] = byes
+        open_games = [row for row in data["games"] if not row.get("actual_winner")]
+        by_week: dict[int, list] = {}
+        for row in open_games:
+            by_week.setdefault(row["week"], []).append(row)
+        open_schedule: list[dict] = []
+        for week in sorted(set(byes) | set(by_week)):
+            if week in byes:
+                open_schedule.append({"kind": "bye", "week": week})
+            for row in by_week.get(week, []):
+                open_schedule.append({"kind": "game", **row})
+        data["open_schedule"] = open_schedule
+        views.append(data)
+    leftovers = leftovers_for(book, None if not conference else conference)
+    for row in leftovers:
+        row["team"] = render_display_name(League.CFB, row["team"])
+        row["opponent"] = render_display_name(League.CFB, row["opponent"])
+    return {
+        "banner": (
+            "Predictions — current-year W/L takes. Results fill in; picks never auto-flip. "
+            "Reconsider is a warning, not a grade."
+        ),
+        "season": season,
+        "conference": conference or "all",
+        "teams": views,
+        "leftovers": leftovers,
+        "nav": _nav(),
+        "active": "predictions",
     }
 
 
@@ -198,12 +278,12 @@ def _ticket_from_request(body: JournalAddRequest) -> Ticket:
 
 @app.get("/", response_class=RedirectResponse)
 def index() -> RedirectResponse:
-    return RedirectResponse("/journal", status_code=307)
+    return RedirectResponse("/research", status_code=307)
 
 
 @app.get("/research", response_class=HTMLResponse)
 def research(request: Request, league: str | None = None) -> HTMLResponse:
-    payload = _board_payload(Mode.SIMULATION, league)
+    payload = _board_payload(league)
     return templates.TemplateResponse(
         request,
         "board.html",
@@ -227,10 +307,25 @@ def journal_page(
     )
 
 
+@app.get("/predictions", response_class=HTMLResponse)
+def predictions_page(
+    request: Request,
+    season: int = RESEARCH_WINDOWS.hands_off,
+    conference: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "predictions.html",
+        _predictions_payload(season, conference),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/api/board")
 def api_board(mode: str = "simulation", league: str | None = None) -> JSONResponse:
+    _mode(mode)
     return JSONResponse(
-        _board_payload(_mode(mode), league),
+        _board_payload(league),
         headers={"Cache-Control": "no-store"},
     )
 
@@ -268,92 +363,57 @@ def api_journal_drop(body: JournalDropRequest) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
-@app.post("/api/mark")
-def api_mark(body: MarkRequest) -> JSONResponse:
-    from sbm.backtest import current_slate
-    from sbm.data.store import games_by_id, load_games
-    from sbm.picks import pick_from_market_side
-
-    parsed = _mode(body.mode)
-    try:
-        market = Market(body.market)
-        column = StakeColumn(body.column)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    side = None
-    if body.side:
-        try:
-            side = Side(body.side)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    games = load_games()
-    game = games_by_id(games).get(body.game_id)
-    if game is None:
-        raise HTTPException(status_code=404, detail="Game not found")
-    if body.skipped:
-        raise HTTPException(
-            status_code=400,
-            detail="Skip is unused; leave the market unmarked",
-        )
-    if side is None:
-        raise HTTPException(status_code=400, detail="Side is required")
-    pin_season = RESEARCH_WINDOWS.hands_off if parsed == Mode.SIMULATION else None
-    slate, model_picks, _ = current_slate(games, mode=parsed, season=pin_season)
-    pred = next((item[1] for item in slate if item[0].game_id == body.game_id), None)
-    model_ticket = next(
-        (p for p in model_picks if p.game_id == body.game_id and p.market == market),
-        None,
+@app.get("/api/predictions")
+def api_predictions(
+    season: int = RESEARCH_WINDOWS.hands_off, conference: str | None = None
+) -> JSONResponse:
+    return JSONResponse(
+        _predictions_payload(season, conference),
+        headers={"Cache-Control": "no-store"},
     )
+
+
+@app.post("/api/predictions/set")
+def api_predictions_set(body: PredictionsSetRequest) -> JSONResponse:
+    from sbm.predictions import save_book, set_winner
+
+    book = _ensure_predictions(body.season)
     try:
-        if column == StakeColumn.SYSTEM:
-            if model_ticket is None:
-                raise ValueError("No model ticket on this market")
-            if side != model_ticket.side:
-                raise ValueError("System must follow the model ticket")
-            source = model_ticket.model_copy(
-                update={"mode": parsed, "column": StakeColumn.SYSTEM, "skipped": False}
-            )
-        else:
-            source = pick_from_market_side(
-                game,
-                pred,
-                mode=parsed,
-                market=market,
-                side=side,
-                column=column,
-                skipped=False,
-            )
-        entry = Ledger(parsed, path=ledger_path(parsed)).mark(
-            game_id=body.game_id,
-            market=market,
-            column=column,
-            skipped=False,
-            side=source.side,
-            team_or_side=source.team_or_side,
-            source=source,
-        )
+        updated = set_winner(book, body.game_id, body.predicted_winner)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return JSONResponse(entry.model_dump(mode="json"))
+    save_book(updated)
+    return JSONResponse(updated.model_dump(mode="json"))
+
+
+@app.post("/api/predictions/note")
+def api_predictions_note(body: PredictionsNoteRequest) -> JSONResponse:
+    from sbm.predictions import save_book, set_note
+
+    book = _ensure_predictions(body.season)
+    try:
+        updated = set_note(book, body.team, League(body.league), body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    save_book(updated)
+    return JSONResponse(updated.model_dump(mode="json"))
+
+
+def _paper_gone() -> JSONResponse:
+    return JSONResponse(
+        {"detail": "Paper mark is gone. Log tickets with POST /api/journal/tickets."},
+        status_code=410,
+    )
+
+
+@app.post("/api/mark")
+def api_mark_gone() -> JSONResponse:
+    return _paper_gone()
 
 
 @app.post("/api/unmark")
-def api_unmark(body: UnmarkRequest) -> JSONResponse:
-    parsed = _mode(body.mode)
-    try:
-        market = Market(body.market)
-        column = StakeColumn(body.column)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    try:
-        Ledger(parsed, path=ledger_path(parsed)).drop(
-            game_id=body.game_id,
-            market=market,
-            column=column,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return JSONResponse({"ok": True})
+def api_unmark_gone() -> JSONResponse:
+    return _paper_gone()
 
 
 @app.get("/health")

@@ -11,6 +11,10 @@
   --sim: #3fb950;
   --live: #d29922;
   --journal: #58a6ff;
+  --you: #e08532;
+  --model-fade: #d29922;
+  --both: #3fb950;
+  --predictions: #a371f7;
 }
 
 * { box-sizing: border-box; }
@@ -42,6 +46,7 @@ header {
 }
 .switcher a.active-simulation, .switcher a.active-research { background: #16351f; color: var(--sim); border-color: var(--sim); }
 .switcher a.active-live, .switcher a.active-journal { background: #0d2137; color: var(--journal); border-color: var(--journal); }
+.switcher a.active-predictions { background: #2a1f3d; color: var(--predictions); border-color: var(--predictions); }
 main { padding: 1.25rem 1.5rem 3rem; max-width: 1200px; margin: 0 auto; }
 .banner {
   padding: 0.75rem 1rem;
@@ -105,17 +110,121 @@ canvas { width: 100%; max-height: 240px; }
   background: #0d1117;
   padding: 0.85rem 1rem 0.7rem;
 }
-.game-card.has-pick { border-color: #388bfd66; }
-.game-card.has-gut { border-color: var(--accent); }
-.gut-chip {
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
+.game-card.fill-you { background: #2a1a0c; border-color: var(--you); }
+.game-card.fill-model { background: #2a2108; border-color: var(--model-fade); }
+.game-card.fill-both { background: #10261a; border-color: var(--both); }
+.game-card.has-warning { box-shadow: inset 0 0 0 2px var(--bad); }
+.market.fill-you { background: #3a241055; border-color: #e0853266; }
+.market.fill-model { background: #3d2e1055; border-color: #d2992266; }
+.market.fill-both { background: #16351f55; border-color: #3fb95066; }
+.market.has-warning { box-shadow: inset 0 0 0 1px var(--bad); }
+.info-chip, .warning-chip, .you-chip, .model-chip, .both-chip {
   padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
   text-transform: none;
   letter-spacing: 0;
 }
-.market.has-gut { border-color: #58a6ff66; }
+.warning-chip { color: var(--bad); border-color: var(--bad); }
+.you-chip { color: var(--you); border-color: var(--you); }
+.model-chip { color: var(--model-fade); border-color: var(--model-fade); }
+.both-chip { color: var(--both); border-color: var(--both); }
+.warning-text { color: var(--bad); }
+.model-ticket-list { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.85rem; }
+.ticket-modal {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 1rem 1.1rem 1.2rem;
+  max-width: 42rem;
+  width: calc(100% - 2rem);
+}
+.ticket-modal::backdrop { background: #00000088; }
+.modal-actions { display: flex; gap: 0.5rem; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+.panel-head h2 { margin: 0; }
+.journal-filters label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; }
+.journal-filters input, .journal-filters select {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
+}
+.pred-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 0.85rem; margin-top: 1rem; }
+.team-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--team-color, var(--border));
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 0.85rem 1rem;
+}
+.team-card.reconsider { box-shadow: inset 0 0 0 2px var(--bad); }
+.team-card header { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.4rem; }
+.team-logo { width: 32px; height: 32px; object-fit: contain; }
+.chip-logo { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; }
+.team-mark { line-height: 1; flex-shrink: 0; font-size: 1.25rem; display: inline-flex; align-items: center; justify-content: center; }
+.team-card h2 { margin: 0; font-size: 1.05rem; }
+.note-row { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--muted); }
+.note-row input {
+  font: inherit;
+  padding: 0.3rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
+}
+.schedule { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.35rem; }
+.pick-strip { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.55rem; }
+.pick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: fit-content;
+  max-width: 100%;
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  color: #0d1117;
+}
+.pick-chip.hit { background: var(--good); }
+.pick-chip.miss { background: var(--bad); color: #fff; }
+.pick-chip.ungraded {
+  background: #21262d;
+  color: var(--text);
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+.sched-row { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; align-items: center; }
+.sched-row.bye { color: var(--muted); font-style: italic; }
+.pick-buttons { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.pick-winner, #open-add-ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pick-winner.selected { border-color: var(--accent); color: var(--accent); }
+.leftover-list { margin: 0; padding-left: 1.1rem; font-size: 0.85rem; }
+.ticket-form textarea {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
+}
 .book-panel { margin: 1rem 0 0; }
 .book-panel .gut-book { display: grid; gap: 0.35rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
 .gut-book li { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.85rem; align-items: center; }
@@ -161,12 +270,19 @@ canvas { width: 100%; max-height: 240px; }
   font-size: 0.75rem;
   margin-bottom: 0.65rem;
 }
-.league-chip, .final-chip, .noise-chip {
+.league-chip, .final-chip, .noise-chip, .intl-chip {
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
   border: 1px solid var(--border);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.intl-chip {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--warn);
+  border-color: var(--warn);
+  vertical-align: middle;
 }
 .final-chip { color: var(--warn); border-color: var(--warn); }
 .matchup {

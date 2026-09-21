@@ -58,6 +58,9 @@ class Game(BaseModel):
     home_rest_days: int | None = None
     away_rest_days: int | None = None
     is_neutral: bool = False
+    venue: str | None = None
+    home_conference: str | None = None
+    away_conference: str | None = None
 
     @property
     def is_final(self) -> bool:
@@ -215,3 +218,33 @@ class SummaryStats(BaseModel):
 
     def as_dict(self) -> dict:
         return self.model_dump()
+
+
+class SeasonGameTake(BaseModel):
+    """One schedule row on a team's current-year Predictions card."""
+
+    game_id: str
+    week: int
+    opponent: str
+    is_home: bool
+    predicted_winner: str | None = None
+    actual_winner: str | None = None
+    leftover: bool = False
+    kickoff: datetime | None = None
+
+
+class TeamSeasonTake(BaseModel):
+    team: str
+    league: League
+    conference: str
+    note: str | None = None
+    games: list[SeasonGameTake] = Field(default_factory=list)
+    reconsider: bool = False
+    predicted_wins_played: int = 0
+    actual_wins: int = 0
+    n_played: int = 0
+
+
+class SeasonPredictions(BaseModel):
+    season: int
+    teams: list[TeamSeasonTake] = Field(default_factory=list)
