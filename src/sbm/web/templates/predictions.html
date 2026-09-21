@@ -20,6 +20,16 @@
   </header>
   <main>
     <div class="banner">{{ banner }}</div>
+    {% if audits %}
+    <section class="panel audit-panel">
+      <h2>Line audit</h2>
+      <ul class="audit-list">
+        {% for row in audits %}
+        <li>{{ row.label }} · {{ row.change }} · {{ row.old_text }} → {{ row.new_text }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
     <div class="filters">
       Conference:
       <a href="/predictions">all</a>
@@ -91,8 +101,9 @@
           <li class="sched-row{% if g.leftover and not g.predicted_winner %} leftover{% endif %}{% if g.international %} international{% endif %}">
             <span class="muted">w{{ g.week }}{% if g.kickoff_label %} {{ g.kickoff_label }}{% endif %}{% if g.international %} <span class="intl-chip" title="{{ g.venue or 'International' }}">INTL</span>{% endif %}</span>
             <span class="pick-buttons">
-              <button type="button" class="pick-winner{% if g.predicted_winner == g.away_team %} selected{% endif %}" data-game="{{ g.game_id }}" data-winner="{{ g.away_team }}">{% if g.away_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.away_logo_mark }}</span>{% elif g.away_logo_url %}<img class="chip-logo" src="{{ g.away_logo_url }}" alt="" width="16" height="16" />{% endif %}{{ g.away_abbrev }}</button>
-              <button type="button" class="pick-winner{% if g.predicted_winner == g.home_team %} selected{% endif %}" data-game="{{ g.game_id }}" data-winner="{{ g.home_team }}">{% if g.home_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.home_logo_mark }}</span>{% elif g.home_logo_url %}<img class="chip-logo" src="{{ g.home_logo_url }}" alt="" width="16" height="16" />{% endif %}{{ g.home_abbrev }}</button>
+              <button type="button" class="pick-winner{% if g.selected == 'away' %} selected{% endif %}" data-game="{{ g.game_id }}" data-choice="away" data-winner="{{ g.away_team }}">{% if g.away_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.away_logo_mark }}</span>{% elif g.away_logo_url %}<img class="chip-logo" src="{{ g.away_logo_url }}" alt="" width="16" height="16" />{% endif %}{{ g.away_label }}</button>
+              <button type="button" class="pick-winner cover{% if g.selected == 'cover' %} selected{% endif %}" data-game="{{ g.game_id }}" data-choice="cover"{% if not g.cover_enabled %} disabled{% endif %}>Cover</button>
+              <button type="button" class="pick-winner{% if g.selected == 'home' %} selected{% endif %}" data-game="{{ g.game_id }}" data-choice="home" data-winner="{{ g.home_team }}">{% if g.home_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.home_logo_mark }}</span>{% elif g.home_logo_url %}<img class="chip-logo" src="{{ g.home_logo_url }}" alt="" width="16" height="16" />{% endif %}{{ g.home_label }}</button>
             </span>
           </li>
           {% endif %}
@@ -115,7 +126,7 @@
           body: JSON.stringify({
             season,
             game_id: btn.getAttribute("data-game"),
-            predicted_winner: btn.getAttribute("data-winner"),
+            choice: btn.getAttribute("data-choice"),
           }),
         });
         if (!resp.ok) {

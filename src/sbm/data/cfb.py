@@ -134,6 +134,42 @@ def games_from_cfbd_payloads(games_payload: list[dict], lines_payload: list[dict
     return out
 
 
+def download_cfb_advanced(seasons: list[int], api_key: str | None = None) -> list[dict]:
+    """Per-game advanced stats. Callers cumulative-sum through the previous week only."""
+    key = api_key if api_key is not None else get_settings().cfbd_api_key
+    if not key:
+        raise RuntimeError(
+            "CFBD_API_KEY is required to ingest college football. Copy .env.example to .env."
+        )
+    rows: list[dict] = []
+    with httpx.Client(timeout=60.0, headers=_headers(key)) as client:
+        for season in seasons:
+            resp = client.get(f"{CFBD_BASE}/stats/game/advanced", params={"year": season})
+            resp.raise_for_status()
+            payload = resp.json() or []
+            for row in payload:
+                if "season" not in row and "year" not in row:
+                    row = {**row, "season": season}
+                rows.append(row)
+    return rows
+
+
+def download_cfb_talent(seasons: list[int], api_key: str | None = None) -> list[dict]:
+    key = api_key if api_key is not None else get_settings().cfbd_api_key
+    if not key:
+        raise RuntimeError(
+            "CFBD_API_KEY is required to ingest college football. Copy .env.example to .env."
+        )
+    rows: list[dict] = []
+    with httpx.Client(timeout=60.0, headers=_headers(key)) as client:
+        for season in seasons:
+            resp = client.get(f"{CFBD_BASE}/talent", params={"year": season})
+            resp.raise_for_status()
+            for row in resp.json() or []:
+                rows.append({**row, "year": row.get("year", season)})
+    return rows
+
+
 def download_cfb_games(seasons: list[int], api_key: str | None = None) -> list[Game]:
     key = api_key if api_key is not None else get_settings().cfbd_api_key
     if not key:

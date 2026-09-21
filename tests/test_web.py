@@ -24,6 +24,8 @@ def test_board_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     research = client.get("/research")
     assert research.status_code == 200
     assert b"Research" in research.content
+    assert b"Ratings" in research.content
+    assert b"Rankings" in research.content
     assert b"ticket-modal" in research.content
     live = client.get("/", params={"mode": "live"}, follow_redirects=False)
     assert live.status_code == 307
@@ -244,13 +246,79 @@ def test_predictions_page_kickoff_and_away_home_buttons(
     assert "w4 Sun 12:00 PM CDT" in html
     assert "Bye w1" in html
     assert "BUF @ KC" not in html
-    buf_btn = html.find('data-game="2026_04_BUF_KC" data-winner="BUF"')
-    kc_btn = html.find('data-game="2026_04_BUF_KC" data-winner="KC"')
+    buf_btn = html.find('data-choice="away" data-winner="BUF"')
+    kc_btn = html.find('data-choice="home" data-winner="KC"')
     assert 0 <= buf_btn < kc_btn
-    buf_btn_2 = html.find('data-game="2026_04_BUF_KC" data-winner="BUF"', buf_btn + 1)
-    kc_btn_2 = html.find('data-game="2026_04_BUF_KC" data-winner="KC"', kc_btn + 1)
+    buf_btn_2 = html.find('data-choice="away" data-winner="BUF"', buf_btn + 1)
+    kc_btn_2 = html.find('data-choice="home" data-winner="KC"', kc_btn + 1)
     assert 0 <= buf_btn_2 < kc_btn_2
     assert "intl-chip" not in html
+    assert "KC -2.4" in html
+    assert 'data-choice="cover"' in html
+    cover_at = html.find('data-choice="cover"')
+    assert 0 <= buf_btn < cover_at < kc_btn
+    set_cover = client.post(
+        "/api/predictions/set",
+        json={"season": 2026, "game_id": "2026_04_BUF_KC", "choice": "cover"},
+    )
+    assert set_cover.status_code == 200, set_cover.text
+    kc = next(t for t in client.get("/api/predictions").json()["teams"] if t["team"] == "KC")
+    pick = next(g for g in kc["games"] if g["game_id"] == "2026_04_BUF_KC")
+    assert pick["pick_kind"] == "cover"
+    assert pick["predicted_winner"] == "KC"
+    assert pick["cover_favorite"] == "KC"
+
+
+def test_ratings_and_rankings_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    from sbm.data.store import save_games
+    from sbm.schema import Game, League
+
+    save_games(
+        League.NFL,
+        [
+            Game(
+                game_id="2026_04_BUF_KC",
+                league=League.NFL,
+                season=2026,
+                week=4,
+                home_team="KC",
+                away_team="BUF",
+            )
+        ],
+    )
+    ratings = client.get("/ratings")
+    assert ratings.status_code == 200
+    assert "Buffalo Bills" in ratings.text
+    assert "NFF" in ratings.text
+    assert ">all<" not in ratings.text
+    assert "NFL" in ratings.text
+    rankings = client.get("/rankings")
+    assert ">all<" not in rankings.text
+    assert "2026 NFL" in rankings.text
+    assert rankings.status_code == 200
+    assert "This list follows the model" in rankings.text
+    moved = client.post(
+        "/api/rankings/move",
+        json={"season": 2026, "group": "nfl", "team": "KC", "direction": "up"},
+    )
+    assert moved.status_code == 200, moved.text
+    again = client.get("/rankings?group=nfl")
+    assert "follows the model" not in again.text
+    research = client.get("/research")
+    assert "You:" in research.text
+    assert "Model " in research.text
+    ranking_html = client.get("/rankings").text
+    assert "rank-grip" in ranking_html
+    assert 'aria-label="Move Buffalo Bills up"' in ranking_html
+    assert 'aria-label="Move Buffalo Bills down"' in ranking_html
+    assert ">Up<" not in ranking_html
+    placed = client.post(
+        "/api/rankings/place",
+        json={"season": 2026, "group": "nfl", "team": "BUF", "index": 0},
+    )
+    assert placed.status_code == 200, placed.text
+    assert placed.json()["groups"]["nfl"][0] == "BUF"
 
 
 def test_predictions_marks_international_games(
@@ -311,7 +379,7 @@ def test_predictions_page_cfb_banner_and_abbrevs(
     assert "Ohio State Buckeyes" in html
     assert "--team-color: #00274C" in html
     assert ">TTUN<" in html
-    assert ">OSU<" in html
+    assert "OSU -2.7" in html
     assert "data-winner=\"Michigan\"" in html
     assert "Michigan Wolverines" not in html
     assert ">MICH<" not in html

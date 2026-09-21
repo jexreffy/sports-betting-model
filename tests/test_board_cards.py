@@ -34,6 +34,16 @@ def test_cards_group_picks_under_matchup() -> None:
     assert card["away_display"] == "Buffalo Bills"
     assert card["home_display"] == "Kansas City Chiefs"
     assert card["away_abbrev"] == "BUF"
+    assert "Model" in card["model_context"]
+    assert "Neutral" in card["model_context"]
+    ranked, _ = game_cards(
+        games,
+        Mode.SIMULATION,
+        you_ranks={("nfl", "KC"): 4, ("nfl", "BUF"): 11},
+    )
+    assert ranked[0]["fill"] == card["fill"]
+    assert ranked[0]["home_rank"] == "You: 4 / Model: 2"
+    assert ranked[0]["away_rank"] == "You: 11 / Model: 1"
     spread = next(m for m in card["markets"] if m["name"] == "spread")
     assert {opt["label"] for opt in spread["wager_options"]} == {"BUF", "KC"}
     names = [m["name"] for m in card["markets"]]

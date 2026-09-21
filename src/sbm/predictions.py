@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from sbm.config import RESEARCH_WINDOWS
@@ -11,13 +12,28 @@ from sbm.paths import predictions_path
 from sbm.schema import (
     Game,
     League,
+    LineAudit,
     SeasonGameTake,
     SeasonPredictions,
     TeamSeasonTake,
 )
 from sbm.teams import NFL_CONFERENCE, NFL_DISPLAY, abbrev, cfb_p4_conference, is_p4_conference
+from sbm.units import favorite_side
 
 RECONSIDER_MIN_PICKED = 3
+COVER_MOVE_POINTS = 3.0
+
+
+def _book(
+    book: SeasonPredictions,
+    teams: list[TeamSeasonTake],
+    audits: list[LineAudit] | None = None,
+) -> SeasonPredictions:
+    return SeasonPredictions(
+        season=book.season,
+        teams=teams,
+        audits=book.audits if audits is None else audits,
+    )
 RECONSIDER_MAX_HIT_RATE = 0.4
 
 
@@ -178,7 +194,8 @@ def init_book(games: list[Game], season: int | None = None) -> SeasonPredictions
         prior = kept.get((League.CFB.value, team_key(League.CFB, name)))
         teams.append(_merge_team(prior, name, League.CFB, conf, rows))
 
-    book = SeasonPredictions(season=year, teams=teams)
+    audits = existing.audits if existing is not None else []
+    book = SeasonPredictions(season=year, teams=teams, audits=audits)
     return annotate_heatmap(book)
 
 
@@ -199,6 +216,9 @@ def _merge_team(
             row = row.model_copy(
                 update={
                     "predicted_winner": old.predicted_winner,
+                    "pick_kind": old.pick_kind,
+                    "cover_favorite": old.cover_favorite,
+                    "cover_line": old.cover_line,
                     "leftover": row.leftover,
                 }
             )
@@ -244,7 +264,7 @@ def sync_actuals(book: SeasonPredictions, games: list[Game]) -> SeasonPrediction
             else:
                 rows.append(row)
         updated.append(team.model_copy(update={"games": rows}))
-    return annotate_heatmap(SeasonPredictions(season=book.season, teams=updated))
+    return annotate_heatmap(_book(book, updated))
 
 
 def annotate_heatmap(book: SeasonPredictions) -> SeasonPredictions:
@@ -278,7 +298,7 @@ def annotate_heatmap(book: SeasonPredictions) -> SeasonPredictions:
                 }
             )
         )
-    return SeasonPredictions(season=book.season, teams=teams)
+    return _book(book, teams)
 
 
 def set_winner(book: SeasonPredictions, game_id: str, winner: str) -> SeasonPredictions:
@@ -292,13 +312,22 @@ def set_winner(book: SeasonPredictions, game_id: str, winner: str) -> SeasonPred
                 allowed = {team.team, row.opponent}
                 if winner not in allowed:
                     raise ValueError(f"{winner} is not playing in {game_id}")
-                rows.append(row.model_copy(update={"predicted_winner": winner}))
+                rows.append(
+                    row.model_copy(
+                        update={
+                            "predicted_winner": winner,
+                            "pick_kind": "outright",
+                            "cover_favorite": None,
+                            "cover_line": None,
+                        }
+                    )
+                )
             else:
                 rows.append(row)
         teams.append(team.model_copy(update={"games": rows}))
     if not found:
         raise ValueError(f"Unknown game {game_id}")
-    return annotate_heatmap(SeasonPredictions(season=book.season, teams=teams))
+    return annotate_heatmap(_book(book, teams))
 
 
 def bye_weeks(games: list[SeasonGameTake], league: League) -> list[int]:
@@ -417,7 +446,121 @@ def set_note(
             teams.append(item)
     if not found:
         raise ValueError(f"Unknown team {team}")
-    return SeasonPredictions(season=book.season, teams=teams)
+    return _book(book, teams)
+
+
+def set_pick(
+    book: SeasonPredictions,
+    game_id: str,
+    choice: str,
+    *,
+    home_margin: float,
+    away_team: str,
+    home_team: str,
+) -> SeasonPredictions:
+    """Store an outright team or a Cover snapshot against the live model number."""
+    if choice not in {"away", "home", "cover"}:
+        raise ValueError(f"Unknown choice {choice}")
+    favorite, laying = favorite_side(home_margin, away_team, home_team)
+    if choice == "cover":
+        if favorite is None:
+            raise ValueError("Cover is not a pick inside half a point")
+        update = {
+            "predicted_winner": favorite,
+            "pick_kind": "cover",
+            "cover_favorite": favorite,
+            "cover_line": round(laying, 4),
+        }
+    else:
+        winner = away_team if choice == "away" else home_team
+        update = {
+            "predicted_winner": winner,
+            "pick_kind": "outright",
+            "cover_favorite": None,
+            "cover_line": None,
+        }
+    teams: list[TeamSeasonTake] = []
+    found = False
+    for team in book.teams:
+        rows: list[SeasonGameTake] = []
+        for row in team.games:
+            if row.game_id == game_id:
+                found = True
+                rows.append(row.model_copy(update=update))
+            else:
+                rows.append(row)
+        teams.append(team.model_copy(update={"games": rows}))
+    if not found:
+        raise ValueError(f"Unknown game {game_id}")
+    return annotate_heatmap(_book(book, teams))
+
+
+def audit_covers(
+    book: SeasonPredictions,
+    margins: dict[str, float],
+    games: dict[str, Game],
+) -> tuple[SeasonPredictions, bool]:
+    """Rewrite a Cover when the favorite flips, the line moves 3+, or it becomes a pick'em."""
+    seen: set[str] = set()
+    audits = list(book.audits)
+    rewrites: dict[str, str] = {}
+    changed = False
+    for team in book.teams:
+        for row in team.games:
+            if row.game_id in seen or row.pick_kind != "cover":
+                continue
+            if row.cover_favorite is None or row.cover_line is None:
+                continue
+            seen.add(row.game_id)
+            margin = margins.get(row.game_id)
+            game = games.get(row.game_id)
+            if margin is None or game is None:
+                continue
+            favorite, laying = favorite_side(margin, game.away_team, game.home_team)
+            change: Literal["flip", "move", "pickem"] | None = None
+            if favorite is None:
+                change = "pickem"
+            elif favorite != row.cover_favorite:
+                change = "flip"
+            elif abs(laying - row.cover_line) >= COVER_MOVE_POINTS:
+                change = "move"
+            if change is None:
+                continue
+            changed = True
+            rewrites[row.game_id] = row.cover_favorite
+            audits.append(
+                LineAudit(
+                    game_id=row.game_id,
+                    label=f"{game.away_team} @ {game.home_team}",
+                    old_favorite=row.cover_favorite,
+                    old_line=row.cover_line,
+                    new_favorite=favorite,
+                    new_line=round(laying, 4),
+                    change=change,
+                )
+            )
+    if not changed:
+        return book, False
+    teams: list[TeamSeasonTake] = []
+    for team in book.teams:
+        rows: list[SeasonGameTake] = []
+        for row in team.games:
+            favorite = rewrites.get(row.game_id)
+            if favorite is None:
+                rows.append(row)
+                continue
+            rows.append(
+                row.model_copy(
+                    update={
+                        "predicted_winner": favorite,
+                        "pick_kind": "outright",
+                        "cover_favorite": None,
+                        "cover_line": None,
+                    }
+                )
+            )
+        teams.append(team.model_copy(update={"games": rows}))
+    return annotate_heatmap(_book(book, teams, audits)), True
 
 
 def _rank_index(ranks: dict[str, list[str]], league: League, team: str) -> int | None:
@@ -496,7 +639,7 @@ def apply_ranks(
                 update["predicted_winner"] = winner
             rows.append(row.model_copy(update=update))
         teams.append(team.model_copy(update={"games": rows}))
-    updated = annotate_heatmap(SeasonPredictions(season=book.season, teams=teams))
+    updated = annotate_heatmap(_book(book, teams))
     return updated, len(fills), leftovers
 
 

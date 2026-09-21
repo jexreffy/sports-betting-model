@@ -14,7 +14,7 @@ from sbm.predictions import (
     set_winner,
     sync_actuals,
 )
-from sbm.schema import Game, League
+from sbm.schema import Game, League, SeasonGameTake, SeasonPredictions, TeamSeasonTake
 
 
 def _nfl(game_id: str, week: int, away: str, home: str, **kwargs: object) -> Game:
@@ -254,3 +254,75 @@ def test_apply_called_misses_picks_the_loser(
     row = next(g for t in updated.teams if t.team == "UCLA" for g in t.games)
     assert row.actual_winner == "UCLA"
     assert row.predicted_winner == "California"
+
+
+def _cover_book() -> SeasonPredictions:
+    row = dict(
+        game_id="g",
+        week=1,
+        predicted_winner="KC",
+        pick_kind="cover",
+        cover_favorite="KC",
+        cover_line=6.5,
+    )
+    return SeasonPredictions(
+        season=2026,
+        teams=[
+            TeamSeasonTake(
+                team="KC",
+                league=League.NFL,
+                conference="AFC",
+                games=[SeasonGameTake(opponent="BUF", is_home=True, **row)],
+            ),
+            TeamSeasonTake(
+                team="BUF",
+                league=League.NFL,
+                conference="AFC",
+                games=[SeasonGameTake(opponent="KC", is_home=False, **row)],
+            ),
+        ],
+    )
+
+
+def test_cover_holds_a_small_move_and_rewrites_when_the_favorite_flips() -> None:
+    from sbm.predictions import audit_covers, set_pick
+
+    game = Game(
+        game_id="g",
+        league=League.NFL,
+        season=2026,
+        week=1,
+        home_team="KC",
+        away_team="BUF",
+    )
+    held, changed = audit_covers(_cover_book(), {"g": 8.0}, {"g": game})
+    assert changed is False
+    assert held.teams[0].games[0].pick_kind == "cover"
+
+    flipped, changed = audit_covers(_cover_book(), {"g": -3.0}, {"g": game})
+    assert changed is True
+    assert flipped.audits[0].change == "flip"
+    for team in flipped.teams:
+        row = team.games[0]
+        assert row.pick_kind == "outright"
+        assert row.predicted_winner == "KC"
+        assert row.cover_favorite is None
+
+    moved, changed = audit_covers(_cover_book(), {"g": 10.0}, {"g": game})
+    assert changed is True
+    assert moved.audits[0].change == "move"
+
+    pickem, changed = audit_covers(_cover_book(), {"g": 0.2}, {"g": game})
+    assert changed is True
+    assert pickem.audits[0].change == "pickem"
+
+    picked = set_pick(
+        _cover_book(),
+        "g",
+        "away",
+        home_margin=6.5,
+        away_team="BUF",
+        home_team="KC",
+    )
+    assert picked.teams[0].games[0].pick_kind == "outright"
+    assert picked.teams[0].games[0].predicted_winner == "BUF"

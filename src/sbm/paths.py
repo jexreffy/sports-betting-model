@@ -58,3 +58,17 @@ def predictions_dir() -> Path:
 
 def predictions_path(season: int) -> Path:
     return predictions_dir() / f"{season}.json"
+
+
+def units_path() -> Path:
+    return raw_dir() / "units.jsonl"
+
+
+def rankings_dir() -> Path:
+    path = data_root() / "rankings"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def rankings_path(season: int) -> Path:
+    return rankings_dir() / f"{season}.json"
