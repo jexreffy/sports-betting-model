@@ -214,3 +214,15 @@ def test_migrate_does_not_touch_simulation(tmp_path: Path) -> None:
     assert added == 1
     assert (tmp_path / "simulation").exists() is False
     assert Journal(path=journal_path).load()[0].result == "win"
+
+
+def test_open_novig_seeds_can_settle() -> None:
+    from sbm.journal_seed import novig_2026_tickets
+
+    open_tickets = [t for t in novig_2026_tickets() if t.result is None]
+    assert open_tickets
+    for ticket in open_tickets:
+        leg = ticket.legs[0]
+        assert leg.game_id
+        assert leg.side in {Side.HOME, Side.AWAY}
+        assert leg.market is not None
