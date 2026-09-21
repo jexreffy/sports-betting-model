@@ -5,8 +5,10 @@ from sbm.odds import (
     american_to_implied,
     cover_home_spread,
     cover_total,
+    decimal_to_american,
     expected_value,
     home_cover_prob,
+    implied_to_american,
     margin_to_win_prob,
     profit_units,
     remove_vig_two_way,
@@ -22,6 +24,12 @@ def test_minus_110_implied():
 
 def test_plus_150_implied():
     assert abs(american_to_implied(150) - 0.4) < 1e-9
+
+
+def test_implied_and_decimal_to_american() -> None:
+    assert implied_to_american(0.5) == -100
+    assert implied_to_american(0.4) == 150
+    assert decimal_to_american(3.57) == 257
 
 
 def test_remove_vig_symmetric_juice():

@@ -1,29 +1,35 @@
-# SBM — NFL + CFB paper betting model
+# SBM — NFL + CFB research model + 2026 Journal
 
-A local research tool that prices NFL and FBS college football **spreads, moneylines, and totals**, then tracks a **paper bankroll**. It never places a sportsbook wager.
+A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**; **Research** (Simulation) is the model’s price sheet and historical lab.
 
-This repo is a skills demo and a 2026 lab. Real-money bets stay outside the app. **Live mode** is a 2027-shaped board you can practice on now; it does not mix with simulation stats.
+## Two books
 
-## Two modes, one model
-
-| Mode | What it is | Ledger |
+| Book | What it is | Store |
 | --- | --- | --- |
-| **Simulation** | Historical walk-forward replay, plus fake bets on **real current games** | `data/simulation/ledger.jsonl` (this week) and `historical_ledger.jsonl` (backtest) |
-| **Live** | The product you would open in 2027 (labeled *practice* until you flip a flag) | `data/live/` |
+| **Research (Simulation)** | Walk-forward backtest, later tune, and this week’s **model slate**. Not your money. Look, don’t book. | `data/simulation/historical_ledger.jsonl` (backtest). Weekly paper `ledger.jsonl` is not the product. |
+| **Journal** | What you actually bet in 2026 (Novig today): dollars, parlays, early cash-out, year hit/miss | `data/journal/tickets.jsonl` |
 
-Ratings and EV math are shared. Ledgers cannot write across modes.
+Ledgers cannot write across books. 2026 is still **hands-off** for historical P&L.
 
-```
-ingest (nflverse / CFBD)
-        │
-        ▼
-  Elo + scoring ratings ──► edge vs market
-        │
-   ┌────┴────┐
-   ▼         ▼
-simulation  live     (isolated books)
-   │         │
-   └── FastAPI dashboard + CLI
+## Weekly playbook
+
+**While you bet**
+
+1. `sbm ingest` if the slate looks stale.
+2. Open **Research** (`/research`). Read model tickets and edges. Do not fill a paper bankroll there — it does not train Elo.
+3. Bet at Novig (or anywhere) however you actually play.
+4. Log that ticket on **Journal** (`/` or `/journal`): sportsbook, dollars, odds, legs.
+
+**After games (leave MNF open until it is final)**
+
+1. `sbm ingest`
+2. `sbm journal settle`
+3. Optional: glance at Research vs Journal if you faded the model. That is a personal scorecard, not training.
+
+**A few times a year**
+
+```bash
+sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
 ```
 
 ## Honesty rules
@@ -31,8 +37,7 @@ simulation  live     (isolated books)
 - Ratings update only **after** a game is predicted. No random train/test splits.
 - Historical simulation evaluates against **closing** lines.
 - CFB paper scoring starts at **Week 4** (Elo still updates from Week 1).
-- Report **units and ROI after −110**, not raw accuracy.
-- 2026 real bets are independent of this app.
+- Report research **units and ROI after −110**, not raw accuracy. Journal reports **dollars**.
 - Same research windows for **NFL and CFB**: warmup **2015–2020** (ratings only), search **2021–2023**, holdout **2024–2025**, **2026 hands-off** for historical P&L.
 
 ## Setup
@@ -51,30 +56,26 @@ sbm ingest --league nfl --start 2015 --end 2026
 sbm ingest --league cfb --start 2015 --end 2026   # needs CFBD_API_KEY
 ```
 
-## Simulation
+## Research (Simulation)
 
 ```bash
-# Frozen toy artifacts (also used in this README)
 sbm simulate bake-sample
-
-# Honest walk-forward → data/simulation/historical_ledger.jsonl (not this week's book)
-sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
-
-# Paper this week's real games
-sbm simulate picks
-sbm simulate settle
+sbm simulate backtest   # → data/simulation/historical_ledger.jsonl
+sbm simulate picks      # prints / optionally papers the model slate (not Journal)
+sbm simulate settle     # grades leftover paper diary rows only
 ```
 
-## Live (practice)
+## Journal
 
 ```bash
-sbm live picks
-sbm live settle
+sbm journal seed-novig   # load recorded 2026 Novig tickets (idempotent)
+sbm journal year
+sbm journal settle
+sbm journal add --stake 5 --implied 0.49 --team USC --opponent ORE --market moneyline --league cfb
+sbm journal cashout TICKET_ID --amount 8.09
 ```
 
-`SBM_LIVE_PRACTICE=true` (default) labels the UI as a rehearsal. Set it to `false` when you actually try the 2027 workflow.
-
-Odds today come from ingested nflverse/CFBD closes via a `LineProvider` protocol. [`TheOddsApiProvider`](src/sbm/providers/lines.py) is a stub so a later Odds API key is a data change, not a rewrite.
+Championship futures are not tracked.
 
 ## Dashboard
 
@@ -83,13 +84,13 @@ sbm serve                 # 127.0.0.1:8000, no reload
 sbm serve --reload        # pick up Python edits
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Use the **simulation | live** switch. Each mode shows its own weekly board, bankroll curve, and Brier vs cover/over (not raw win probability).
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Journal). **Research** is `/research`.
 
-Ingest of a season range **merges** into the existing JSONL: only those seasons are replaced. A 2026-only pull will not delete 2015–2025.
+Ingest of a season range **merges** into the existing JSONL: only those seasons are replaced.
 
 ## Sample backtest (toy league)
 
-Checked-in artifacts from `sbm simulate bake-sample` (not live 2026 picks):
+Checked-in artifacts from `sbm simulate bake-sample` (not 2026 tickets):
 
 - [`reports/sample/summary.json`](reports/sample/summary.json)
 - [`reports/sample/picks.csv`](reports/sample/picks.csv)
@@ -120,12 +121,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
-That is the same HTTP service you would put on Cloud Run, Fly.io, or Railway later:
-
-- One container serves FastAPI (`sbm serve`).
-- Persist `data/simulation` and `data/live` as two volumes (already in Compose).
+- Persist `data/simulation` and `data/journal` as two volumes.
 - Pass `CFBD_API_KEY` as an env var; never bake it into the image.
-- Schedule `sbm ingest` and `sbm simulate settle` / `sbm live settle` weekly (Cloud Scheduler, Fly cron, or the optional Compose `worker` profile).
 
 v1 does **not** provision a paid host.
 
@@ -134,11 +131,12 @@ v1 does **not** provision a paid host.
 - `src/sbm/models/` — Elo, totals, combined engine
 - `src/sbm/data/` — NFL / CFB adapters + JSONL store
 - `src/sbm/backtest.py` — walk-forward + current-week slate
-- `src/sbm/paper.py` — mode-keyed ledger
+- `src/sbm/paper.py` — simulation paper ledger
+- `src/sbm/journal.py` — real 2026 tickets
 - `src/sbm/providers/lines.py` — swappable market lines
 - `src/sbm/web/` — FastAPI + Jinja dashboard
-- `tests/` — EV math, leakage, ledger isolation, parsers
+- `tests/` — EV math, leakage, ledger isolation, journal grade
 
 ## Disclaimer
 
-This is educational software. Sports betting involves risk. Past paper results do not imply future profit. The authors do not place bets for you.
+This is educational software. Sports betting involves risk. Past results do not imply future profit. The authors do not place bets for you.

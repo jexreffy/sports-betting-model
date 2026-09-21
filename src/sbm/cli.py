@@ -10,19 +10,19 @@ from sbm.mode import Mode
 from sbm.schema import League
 
 app = typer.Typer(
-    help="NFL + CFB paper betting model. Never places sportsbook wagers.",
+    help="NFL + CFB research model and 2026 Journal. Never places sportsbook wagers.",
     rich_markup_mode=None,
 )
 simulate_app = typer.Typer(
-    help="Simulation lab: historical replay and paper bets on real games.",
+    help="Research lab: historical replay and the current-week model slate. Not your money.",
     rich_markup_mode=None,
 )
-live_app = typer.Typer(
-    help="Live 2027-shaped board (practice by default). Isolated ledger.",
+journal_app = typer.Typer(
+    help="2026 real-money Journal (logging only). Isolated from Simulation.",
     rich_markup_mode=None,
 )
 app.add_typer(simulate_app, name="simulate")
-app.add_typer(live_app, name="live")
+app.add_typer(journal_app, name="journal")
 
 
 def _seasons(start: int, end: int) -> list[int]:
@@ -124,7 +124,7 @@ def simulate_picks(
     week: Annotated[int | None, typer.Option()] = None,
     league: Annotated[str | None, typer.Option()] = None,
 ) -> None:
-    """Paper the current (or specified) real week into the simulation diary."""
+    """Look-don't-book: print the current-week model slate. Does not write Journal."""
     _run_week_picks(Mode.SIMULATION, season, week, league)
 
 
@@ -174,27 +174,135 @@ def simulate_tune(
     typer.echo("Suggested params are not applied automatically.")
 
 
-@live_app.command("picks")
-def live_picks(
-    season: Annotated[int | None, typer.Option()] = None,
-    week: Annotated[int | None, typer.Option()] = None,
-    league: Annotated[str | None, typer.Option()] = None,
+@journal_app.command("add")
+def journal_add(
+    sportsbook: Annotated[str, typer.Option()] = "Novig",
+    stake: Annotated[float, typer.Option(help="Stake in dollars")] = ...,
+    american_odds: Annotated[int | None, typer.Option()] = None,
+    decimal_odds: Annotated[float | None, typer.Option()] = None,
+    implied: Annotated[float | None, typer.Option(help="Implied win probability 0-1")] = None,
+    kind: Annotated[str, typer.Option()] = "straight",
+    league: Annotated[str, typer.Option()] = "nfl",
+    season: Annotated[int, typer.Option()] = RESEARCH_WINDOWS.hands_off,
+    week: Annotated[int, typer.Option()] = 1,
+    team: Annotated[str, typer.Option()] = ...,
+    opponent: Annotated[str | None, typer.Option()] = None,
+    market: Annotated[str | None, typer.Option()] = None,
+    side: Annotated[str | None, typer.Option()] = None,
+    line: Annotated[float | None, typer.Option()] = None,
+    game_id: Annotated[str | None, typer.Option()] = None,
+    notes: Annotated[str | None, typer.Option()] = None,
+    extra_leg: Annotated[
+        list[str] | None, typer.Option(help="JSON object for another parlay leg")
+    ] = None,
 ) -> None:
-    """2027-shaped board. Writes only the live ledger."""
-    from sbm.config import get_settings
+    """Log a real ticket. Does not place a wager."""
+    import json
+    from datetime import UTC, datetime
 
-    settings = get_settings()
-    if settings.live_practice:
-        typer.echo("LIVE (practice) — not this year's real book.")
-    _run_week_picks(Mode.LIVE, season, week, league)
+    from sbm.journal import Journal, new_ticket_id
+    from sbm.odds import decimal_to_american, implied_to_american
+    from sbm.schema import Leg, Market, Side, Ticket, TicketKind
+
+    if american_odds is None and decimal_odds is not None:
+        american_odds = decimal_to_american(decimal_odds)
+    if american_odds is None and implied is not None:
+        american_odds = implied_to_american(implied)
+    if american_odds is None:
+        raise typer.BadParameter("Provide --american-odds, --decimal-odds, or --implied")
+    parsed_kind = TicketKind(kind.lower())
+    lg = League(league.lower())
+    parsed_market = Market(market) if market else None
+    parsed_side = Side(side) if side else None
+    legs = [
+        Leg(
+            league=lg,
+            season=season,
+            week=week,
+            team_or_side=team,
+            game_id=game_id,
+            market=parsed_market,
+            side=parsed_side,
+            market_line=line,
+            american_odds=american_odds,
+            opponent=opponent,
+        )
+    ]
+    for raw in extra_leg or []:
+        payload = json.loads(raw)
+        legs.append(Leg.model_validate(payload))
+    ticket = Ticket(
+        ticket_id=new_ticket_id(),
+        season=season,
+        sportsbook=sportsbook,
+        stake_dollars=stake,
+        american_odds=american_odds,
+        kind=parsed_kind,
+        legs=legs,
+        implied_prob=implied,
+        notes=notes,
+        placed_at=datetime.now(UTC),
+    )
+    Journal().add(ticket)
+    typer.echo(ticket.model_dump_json(indent=2))
 
 
-@live_app.command("settle")
-def live_settle(
-    season: Annotated[int | None, typer.Option()] = None,
-    week: Annotated[int | None, typer.Option()] = None,
+@journal_app.command("cashout")
+def journal_cashout(
+    ticket_id: Annotated[str, typer.Argument()],
+    amount: Annotated[float, typer.Option(help="Dollars returned by the book")],
 ) -> None:
-    _settle(Mode.LIVE, season, week)
+    from sbm.journal import Journal
+
+    ticket = Journal().cashout(ticket_id, amount)
+    typer.echo(ticket.model_dump_json(indent=2))
+
+
+@journal_app.command("settle")
+def journal_settle(
+    season: Annotated[int, typer.Option()] = RESEARCH_WINDOWS.hands_off,
+) -> None:
+    from sbm.data.store import games_by_id, load_games
+    from sbm.journal import Journal
+
+    book = Journal()
+    n = book.settle(games_by_id(load_games()), season=season)
+    typer.echo(f"Settled {n} journal tickets for {season}")
+    typer.echo(book.year(season).model_dump_json(indent=2))
+
+
+@journal_app.command("year")
+def journal_year(
+    season: Annotated[int, typer.Option()] = RESEARCH_WINDOWS.hands_off,
+) -> None:
+    from sbm.journal import Journal
+
+    typer.echo(Journal().year(season).model_dump_json(indent=2))
+
+
+@journal_app.command("seed-novig")
+def journal_seed_novig() -> None:
+    """Load the 2026 Novig tickets already recorded (idempotent)."""
+    from sbm.journal import Journal
+
+    added = Journal().seed_novig()
+    typer.echo(f"Added {added} Novig tickets")
+
+
+@journal_app.command("migrate-live")
+def journal_migrate_live() -> None:
+    """Copy leftover paper rows from data/live/ledger.jsonl into Journal."""
+    from sbm.journal import migrate_live_ledger
+
+    n = migrate_live_ledger()
+    typer.echo(f"Migrated {n} live paper rows")
+
+
+@app.command("live")
+def live_renamed() -> None:
+    """Renamed to `sbm journal`."""
+    typer.echo("Live was renamed to Journal. Use `sbm journal --help`.")
+    raise typer.Exit(0)
 
 
 @app.command()

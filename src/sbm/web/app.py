@@ -1,24 +1,26 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from sbm.config import RESEARCH_WINDOWS, get_settings
+from sbm.config import RESEARCH_WINDOWS
+from sbm.journal import Journal, new_ticket_id
 from sbm.mode import Mode, parse_mode
 from sbm.paper import Ledger
 from sbm.paths import ledger_path
-from sbm.schema import League, Market, Side, StakeColumn
+from sbm.schema import League, Leg, Market, Side, StakeColumn, Ticket, TicketKind
 from sbm.teams import book_ticket_label
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
-app = FastAPI(title="SBM", description="NFL + CFB paper betting model")
+app = FastAPI(title="SBM", description="NFL + CFB research model and 2026 Journal")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
@@ -29,13 +31,11 @@ def _mode(value: str) -> Mode:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _banner(mode: Mode) -> str:
-    if mode == Mode.SIMULATION:
-        return "Simulation — fake bets / research. Real-money wagers stay outside this app."
-    settings = get_settings()
-    if settings.live_practice:
-        return "LIVE (practice) — 2027-shaped board. Not this year's real book."
-    return "LIVE — practice complete; treat this as the 2027 workflow."
+def _nav() -> list[dict[str, str]]:
+    return [
+        {"href": "/research", "label": "Research", "key": "research"},
+        {"href": "/journal", "label": "Journal", "key": "journal"},
+    ]
 
 
 class MarkRequest(BaseModel):
@@ -52,6 +52,27 @@ class UnmarkRequest(BaseModel):
     game_id: str
     market: str
     column: str
+
+
+class JournalAddRequest(BaseModel):
+    sportsbook: str = "Novig"
+    stake_dollars: float
+    american_odds: int | None = None
+    decimal_odds: float | None = None
+    implied_prob: float | None = None
+    kind: str = "straight"
+    season: int = RESEARCH_WINDOWS.hands_off
+    notes: str | None = None
+    legs: list[dict]
+
+
+class JournalCashoutRequest(BaseModel):
+    ticket_id: str
+    cashout_dollars: float
+
+
+class JournalDropRequest(BaseModel):
+    ticket_id: str
 
 
 def _board_payload(mode: Mode, league: str | None = None) -> dict:
@@ -114,7 +135,10 @@ def _board_payload(mode: Mode, league: str | None = None) -> dict:
         ).model_dump(mode="json")
     return {
         "mode": mode.value,
-        "banner": _banner(mode),
+        "banner": (
+            "Research — model slate only. Look, don't book. Real tickets go in Journal. "
+            "This does not train Elo."
+        ),
         "slate_label": " · ".join(slate_bits) if slate_bits else "No current slate",
         "cards": cards,
         "picks": [p.model_dump(mode="json") for p in picks],
@@ -124,21 +148,81 @@ def _board_payload(mode: Mode, league: str | None = None) -> dict:
         "errors": errors,
         "book": book,
         "has_games": bool(games),
+        "look_only": True,
+        "nav": _nav(),
+        "active": "research",
     }
 
 
-@app.get("/", response_class=HTMLResponse)
-def index(request: Request, mode: str = "simulation", league: str | None = None) -> HTMLResponse:
-    parsed = _mode(mode)
-    payload = _board_payload(parsed, league)
+def _journal_payload(season: int) -> dict:
+    book = Journal()
+    stats = book.year(season)
+    return {
+        "banner": (
+            "Journal — 2026 real tickets (Novig). Logging only; SBM never places a wager. "
+            "Championship futures are not tracked."
+        ),
+        "season": season,
+        "summary": stats.model_dump(),
+        "tickets": book.rows_for_year(season),
+        "nav": _nav(),
+        "active": "journal",
+    }
+
+
+def _ticket_from_request(body: JournalAddRequest) -> Ticket:
+    from sbm.odds import decimal_to_american, implied_to_american
+
+    odds = body.american_odds
+    if odds is None and body.decimal_odds is not None:
+        odds = decimal_to_american(body.decimal_odds)
+    if odds is None and body.implied_prob is not None:
+        odds = implied_to_american(body.implied_prob)
+    if odds is None:
+        raise ValueError("Provide american_odds, decimal_odds, or implied_prob")
+    if not body.legs:
+        raise ValueError("At least one leg is required")
+    return Ticket(
+        ticket_id=new_ticket_id(),
+        season=body.season,
+        sportsbook=body.sportsbook,
+        stake_dollars=body.stake_dollars,
+        american_odds=odds,
+        kind=TicketKind(body.kind.lower()),
+        legs=[Leg.model_validate(leg) for leg in body.legs],
+        implied_prob=body.implied_prob,
+        notes=body.notes,
+        placed_at=datetime.now(UTC),
+    )
+
+
+@app.get("/", response_class=RedirectResponse)
+def index() -> RedirectResponse:
+    return RedirectResponse("/journal", status_code=307)
+
+
+@app.get("/research", response_class=HTMLResponse)
+def research(request: Request, league: str | None = None) -> HTMLResponse:
+    payload = _board_payload(Mode.SIMULATION, league)
     return templates.TemplateResponse(
         request,
         "board.html",
         {
             **payload,
             "league": league or "all",
-            "modes": [m.value for m in Mode],
         },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/journal", response_class=HTMLResponse)
+def journal_page(
+    request: Request, season: int = RESEARCH_WINDOWS.hands_off
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "journal.html",
+        _journal_payload(season),
         headers={"Cache-Control": "no-store"},
     )
 
@@ -149,6 +233,39 @@ def api_board(mode: str = "simulation", league: str | None = None) -> JSONRespon
         _board_payload(_mode(mode), league),
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.get("/api/journal")
+def api_journal(season: int = RESEARCH_WINDOWS.hands_off) -> JSONResponse:
+    return JSONResponse(_journal_payload(season), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/journal/tickets")
+def api_journal_add(body: JournalAddRequest) -> JSONResponse:
+    try:
+        ticket = _ticket_from_request(body)
+        Journal().add(ticket)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(ticket.model_dump(mode="json"))
+
+
+@app.post("/api/journal/cashout")
+def api_journal_cashout(body: JournalCashoutRequest) -> JSONResponse:
+    try:
+        ticket = Journal().cashout(body.ticket_id, body.cashout_dollars)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(ticket.model_dump(mode="json"))
+
+
+@app.post("/api/journal/drop")
+def api_journal_drop(body: JournalDropRequest) -> JSONResponse:
+    try:
+        Journal().drop(body.ticket_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/mark")

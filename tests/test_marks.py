@@ -72,12 +72,14 @@ def test_gut_column_is_separate_pnl(tmp_path: Path) -> None:
     assert summary.gut.units < 0
 
 
-def test_mark_does_not_write_the_other_mode(
+def test_mark_does_not_write_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    from sbm.journal import Journal
+    from sbm.paths import journal_tickets_path
+
     sim = Ledger(Mode.SIMULATION)
-    live = Ledger(Mode.LIVE)
     pick = _system()
     sim.append(LedgerEntry(mode=Mode.SIMULATION, pick=pick))
     sim.mark(
@@ -86,7 +88,8 @@ def test_mark_does_not_write_the_other_mode(
         column=StakeColumn.SYSTEM,
         skipped=True,
     )
-    assert live.load() == []
+    assert Journal().load() == []
+    assert not journal_tickets_path().exists()
     assert sim.load()[0].pick.skipped is True
 
 

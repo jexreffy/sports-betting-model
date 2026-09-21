@@ -39,14 +39,14 @@ def test_week_error_report_empty_slate() -> None:
     assert report.by_league == []
 
 
-def test_simulation_errors_do_not_need_live_ledger(
+def test_simulation_errors_do_not_need_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
-    from sbm.paper import Ledger
+    from sbm.journal import Journal
 
-    live = Ledger(Mode.LIVE)
-    live.record_picks([])
+    book = Journal()
+    book.year(2026)
     games = [
         Game(
             game_id="g1",
@@ -64,4 +64,4 @@ def test_simulation_errors_do_not_need_live_ledger(
     report = week_error_report(games, season=2026, week=1, mode=Mode.SIMULATION)
     assert report.n_games == 1
     assert report.by_league[0].league == League.NFL
-    assert live.load() == []
+    assert book.load() == []

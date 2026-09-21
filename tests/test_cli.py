@@ -17,7 +17,10 @@ def test_help() -> None:
     assert result.exit_code == 0
     stdout = _plain(result.stdout)
     assert "simulate" in stdout
-    assert "live" in stdout
+    assert "journal" in stdout
+    live = runner.invoke(app, ["live"], color=False)
+    assert live.exit_code == 0
+    assert "Journal" in _plain(live.stdout)
     sim = runner.invoke(app, ["simulate", "--help"], color=False)
     sim_out = _plain(sim.stdout)
     assert "save-week" in sim_out
