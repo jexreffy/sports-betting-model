@@ -8,6 +8,7 @@ from sbm.backtest import current_slate
 from sbm.config import LeagueParams
 from sbm.mode import Mode
 from sbm.schema import Game, League, Prediction
+from sbm.units import UnitBook
 
 
 class GameErrorRow(BaseModel):
@@ -144,9 +145,10 @@ def week_error_report(
     week: int,
     mode: Mode = Mode.SIMULATION,
     league: League | None = None,
+    units: UnitBook | None = None,
 ) -> WeekErrorReport:
     slate, _, _ = current_slate(
-        games, mode=mode, season=season, week=week, league=league
+        games, mode=mode, season=season, week=week, league=league, units=units
     )
     rows = [row_from_prediction(game, pred) for game, pred in slate]
     return WeekErrorReport(
@@ -164,6 +166,7 @@ def prediction_errors(
     start_season: int,
     end_season: int,
     params_by_league: dict[League, LeagueParams] | None = None,
+    units: UnitBook | None = None,
 ) -> list[GameErrorRow]:
     """Walk-forward prediction errors. Does not read any ledger."""
     from sbm.config import RESEARCH_WINDOWS
@@ -181,7 +184,9 @@ def prediction_errors(
         if window is None:
             continue
         extra = (params_by_league or {}).get(game.league)
-        engine = engines.setdefault(game.league, ModelEngine(game.league, params=extra))
+        engine = engines.setdefault(
+            game.league, ModelEngine(game.league, params=extra, units=units)
+        )
         if game.season < start_season:
             if game.is_final:
                 engine.update(game)

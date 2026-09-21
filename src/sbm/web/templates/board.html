@@ -61,6 +61,13 @@
                 {% if card.home_score is not none %}<span class="score">{{ card.home_score }}</span>{% endif %}
               </div>
             </div>
+            <p class="model-context">{{ card.model_context }}</p>
+            {% if card.away_rank or card.home_rank %}
+            <p class="rank-context">
+              {% if card.away_rank %}<span>{{ card.away_abbrev }} {{ card.away_rank }}</span>{% endif %}
+              {% if card.home_rank %}<span>{{ card.home_abbrev }} {{ card.home_rank }}</span>{% endif %}
+            </p>
+            {% endif %}
             <ul class="markets">
               {% for m in card.markets %}
               <li class="market fill-{{ m.fill }}{% if m.warning %} has-warning{% endif %}">

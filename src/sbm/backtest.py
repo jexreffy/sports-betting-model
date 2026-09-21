@@ -8,6 +8,7 @@ from sbm.models.engine import ModelEngine
 from sbm.paper import Ledger
 from sbm.picks import picks_from_prediction
 from sbm.schema import Game, League, Pick, Prediction
+from sbm.units import UnitBook
 
 
 def walk_forward(
@@ -20,6 +21,7 @@ def walk_forward(
     windows: ResearchWindows | None = None,
     settings: Settings | None = None,
     params_by_league: dict[League, LeagueParams] | None = None,
+    units: UnitBook | None = None,
 ) -> tuple[list[Pick], dict[League, ModelEngine]]:
     """
     Process games in time order. Ratings update only after each game is predicted.
@@ -44,7 +46,9 @@ def walk_forward(
         if split.window_for(game.season) is None:
             continue
         extra = (params_by_league or {}).get(game.league)
-        engine = engines.setdefault(game.league, ModelEngine(game.league, params=extra))
+        engine = engines.setdefault(
+            game.league, ModelEngine(game.league, params=extra, units=units)
+        )
         window = split.window_for(game.season)
         if window and not split.record_historical_picks(game.season):
             if game.is_final:
@@ -89,6 +93,7 @@ def current_slate(
     season: int | None = None,
     week: int | None = None,
     league: League | None = None,
+    units: UnitBook | None = None,
 ) -> tuple[list[tuple[Game, Prediction]], list[Pick], dict[League, ModelEngine]]:
     """Ratings from prior weeks, then this week's games + predictions. No intra-week leakage."""
     by_league: dict[League, list[Game]] = defaultdict(list)
@@ -114,7 +119,7 @@ def current_slate(
             target_season = target_season or inferred[0]
             target_week = target_week or inferred[1]
 
-        engine = engines.setdefault(lg, ModelEngine(lg))
+        engine = engines.setdefault(lg, ModelEngine(lg, units=units))
         week_games: list[Game] = []
         for game in ordered:
             if (game.season, game.week) < (target_season, target_week):
@@ -149,12 +154,33 @@ def current_slate_picks(
     return picks, engines
 
 
+def pregame_predictions(
+    games: list[Game],
+    *,
+    units: UnitBook | None = None,
+) -> tuple[dict[str, Prediction], dict[League, ModelEngine]]:
+    """Predict each game from ratings and unit stats that exist before it."""
+    ordered = sorted(
+        games,
+        key=lambda g: (g.season, g.week, g.kickoff.isoformat() if g.kickoff else "", g.game_id),
+    )
+    engines: dict[League, ModelEngine] = {}
+    out: dict[str, Prediction] = {}
+    for game in ordered:
+        engine = engines.setdefault(game.league, ModelEngine(game.league, units=units))
+        out[game.game_id] = engine.predict(game)
+        if game.is_final:
+            engine.update(game)
+    return out, engines
+
+
 def apply_backtest_to_ledger(
     games: list[Game],
     ledger: Ledger,
     *,
     start_season: int | None = None,
     end_season: int | None = None,
+    units: UnitBook | None = None,
 ) -> int:
     if ledger.mode != Mode.SIMULATION:
         raise ValueError("Historical backtests may only write the simulation ledger")
@@ -165,6 +191,7 @@ def apply_backtest_to_ledger(
         start_season=start_season,
         end_season=end_season,
         windows=RESEARCH_WINDOWS,
+        units=units,
     )
     added = ledger.record_picks(picks)
     by_id = {g.game_id: g for g in games}

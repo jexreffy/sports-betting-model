@@ -41,6 +41,10 @@ class LeagueParams:
         rest_cap: float = 2.0,
         off_k: float = 0.15,
         def_k: float = 0.15,
+        run_weight: float = 8.0,
+        pass_weight: float = 0.0,
+        talent_weight: float = 0.5,
+        unit_cap: float = 4.0,
     ) -> None:
         self.hfa_points = hfa_points
         self.elo_per_point = elo_per_point
@@ -55,8 +59,40 @@ class LeagueParams:
         self.rest_cap = rest_cap
         self.off_k = off_k
         self.def_k = def_k
+        self.run_weight = run_weight
+        self.pass_weight = pass_weight
+        self.talent_weight = talent_weight
+        self.unit_cap = unit_cap
 
 
+_LEAGUE_PARAM_FIELDS = (
+    "hfa_points",
+    "elo_per_point",
+    "k",
+    "revert",
+    "base_elo",
+    "margin_sigma",
+    "total_sigma",
+    "league_avg_total",
+    "min_week_to_score",
+    "rest_points_per_day",
+    "rest_cap",
+    "off_k",
+    "def_k",
+    "run_weight",
+    "pass_weight",
+    "talent_weight",
+    "unit_cap",
+)
+
+
+def copy_league_params(params: LeagueParams, **overrides: float) -> LeagueParams:
+    data = {name: getattr(params, name) for name in _LEAGUE_PARAM_FIELDS}
+    data.update(overrides)
+    return LeagueParams(**data)
+
+
+# Unit weights are the 2021–2023 search. Pass landed at zero. Not refit on 2026.
 NFL_PARAMS = LeagueParams(
     hfa_points=2.4,
     elo_per_point=25.0,
@@ -65,6 +101,10 @@ NFL_PARAMS = LeagueParams(
     league_avg_total=44.5,
     min_week_to_score=1,
     margin_sigma=13.8,
+    run_weight=8.0,
+    pass_weight=0.0,
+    talent_weight=0.0,
+    unit_cap=4.0,
 )
 
 CFB_PARAMS = LeagueParams(
@@ -76,6 +116,10 @@ CFB_PARAMS = LeagueParams(
     min_week_to_score=4,
     margin_sigma=16.5,
     total_sigma=13.0,
+    run_weight=8.0,
+    pass_weight=0.0,
+    talent_weight=0.5,
+    unit_cap=4.0,
 )
 
 

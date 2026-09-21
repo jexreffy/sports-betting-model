@@ -5,11 +5,19 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from sbm.backtest import walk_forward
-from sbm.config import CFB_PARAMS, NFL_PARAMS, RESEARCH_WINDOWS, LeagueParams, Settings
+from sbm.config import (
+    CFB_PARAMS,
+    NFL_PARAMS,
+    RESEARCH_WINDOWS,
+    LeagueParams,
+    Settings,
+    copy_league_params,
+)
 from sbm.errors import prediction_errors
 from sbm.mode import Mode
 from sbm.odds import settle_pick
 from sbm.schema import Game, League
+from sbm.units import UnitBook
 
 
 class TuneCandidate(BaseModel):
@@ -28,22 +36,23 @@ class TuneReport(BaseModel):
     candidates: list[TuneCandidate] = Field(default_factory=list)
 
 
+class FactorCandidate(BaseModel):
+    run_weight: float
+    pass_weight: float
+    talent_weight: float
+    search_mae_margin: float | None
+    holdout_mae_margin: float | None = None
+
+
+class FactorTuneReport(BaseModel):
+    search_seasons: tuple[int, int]
+    holdout_seasons: tuple[int, int]
+    chosen: FactorCandidate
+    candidates: list[FactorCandidate] = Field(default_factory=list)
+
+
 def _copy_params(params: LeagueParams, k: float) -> LeagueParams:
-    return LeagueParams(
-        hfa_points=params.hfa_points,
-        elo_per_point=params.elo_per_point,
-        k=k,
-        revert=params.revert,
-        base_elo=params.base_elo,
-        margin_sigma=params.margin_sigma,
-        total_sigma=params.total_sigma,
-        league_avg_total=params.league_avg_total,
-        min_week_to_score=params.min_week_to_score,
-        rest_points_per_day=params.rest_points_per_day,
-        rest_cap=params.rest_cap,
-        off_k=params.off_k,
-        def_k=params.def_k,
-    )
+    return copy_league_params(params, k=k)
 
 
 def _paper_units(
@@ -154,7 +163,75 @@ def tune(
     )
 
 
-def write_tune_report(report: TuneReport, path: Path) -> Path:
+def tune_factors(
+    games: list[Game],
+    units: UnitBook,
+    *,
+    run_grid: tuple[float, ...] = (0.0, 8.0, 16.0),
+    pass_grid: tuple[float, ...] = (0.0, 8.0),
+    talent_grid: tuple[float, ...] = (0.0, 0.5),
+) -> FactorTuneReport:
+    """Search run, pass, and talent weights on 2021–2023. Report 2024–2025. Never fit 2026."""
+    split = RESEARCH_WINDOWS
+    if split.hands_off <= split.search_end:
+        raise ValueError("Refusing to fit on the hands-off season")
+    candidates: list[FactorCandidate] = []
+    for run_weight in run_grid:
+        for pass_weight in pass_grid:
+            for talent_weight in talent_grid:
+                params = {
+                    League.NFL: copy_league_params(
+                        NFL_PARAMS,
+                        run_weight=run_weight,
+                        pass_weight=pass_weight,
+                        talent_weight=0.0,
+                    ),
+                    League.CFB: copy_league_params(
+                        CFB_PARAMS,
+                        run_weight=run_weight,
+                        pass_weight=pass_weight,
+                        talent_weight=talent_weight,
+                    ),
+                }
+                search_rows = prediction_errors(
+                    games,
+                    start_season=split.search_start,
+                    end_season=split.search_end,
+                    params_by_league=params,
+                    units=units,
+                )
+                if any(row.season == split.hands_off for row in search_rows):
+                    raise ValueError("Tune search included the hands-off season")
+                holdout_rows = prediction_errors(
+                    games,
+                    start_season=split.holdout_start,
+                    end_season=split.holdout_end,
+                    params_by_league=params,
+                    units=units,
+                )
+                candidates.append(
+                    FactorCandidate(
+                        run_weight=run_weight,
+                        pass_weight=pass_weight,
+                        talent_weight=talent_weight,
+                        search_mae_margin=_mae_margin(search_rows),
+                        holdout_mae_margin=_mae_margin(holdout_rows),
+                    )
+                )
+
+    def _key(candidate: FactorCandidate) -> tuple[float, float, float, float]:
+        mae = candidate.search_mae_margin if candidate.search_mae_margin is not None else 1e9
+        return (mae, candidate.run_weight, candidate.pass_weight, candidate.talent_weight)
+
+    return FactorTuneReport(
+        search_seasons=(split.search_start, split.search_end),
+        holdout_seasons=(split.holdout_start, split.holdout_end),
+        chosen=min(candidates, key=_key),
+        candidates=candidates,
+    )
+
+
+def write_tune_report(report: BaseModel, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
     return path

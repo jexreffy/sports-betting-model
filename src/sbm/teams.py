@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sbm.schema import League
 
 NFL_ALIASES: dict[str, list[str]] = {
@@ -728,28 +730,53 @@ def _is_ttun(league: League, team: str) -> bool:
     return league == League.CFB and _cfb_key(team) == "michigan"
 
 
+@dataclass(frozen=True)
+class TeamFace:
+    """How a club is drawn. Stored names stay real; TTUN is render-only."""
+
+    team: str
+    display_name: str
+    abbrev: str
+    logo_url: str | None
+    logo_mark: str | None
+    color: str | None
+    search_text: str
+
+
+def team_face(league: League, team: str, conference: str | None = None) -> TeamFace:
+    ttun = _is_ttun(league, team)
+    shown = TTUN_DISPLAY if ttun else display_name(league, team)
+    code = TTUN_ABBREV if ttun else abbrev(league, team)
+    blob = search_blob(league, team)
+    if ttun:
+        blob = f"{blob} {TTUN_DISPLAY} {TTUN_ABBREV}".lower()
+    if conference:
+        blob = f"{blob} {conference}".lower()
+    return TeamFace(
+        team=team.strip(),
+        display_name=shown,
+        abbrev=code,
+        logo_url=None if ttun else logo_url(league, team),
+        logo_mark=TTUN_MARK if ttun else None,
+        color=team_color(league, team, conference),
+        search_text=blob,
+    )
+
+
 def render_display_name(league: League, team: str) -> str:
-    if _is_ttun(league, team):
-        return TTUN_DISPLAY
-    return display_name(league, team)
+    return team_face(league, team).display_name
 
 
 def render_abbrev(league: League, team: str) -> str:
-    if _is_ttun(league, team):
-        return TTUN_ABBREV
-    return abbrev(league, team)
+    return team_face(league, team).abbrev
 
 
 def render_logo_url(league: League, team: str) -> str | None:
-    if _is_ttun(league, team):
-        return None
-    return logo_url(league, team)
+    return team_face(league, team).logo_url
 
 
 def render_logo_mark(league: League, team: str) -> str | None:
-    if _is_ttun(league, team):
-        return TTUN_MARK
-    return None
+    return team_face(league, team).logo_mark
 
 
 def team_color(league: League, team: str, conference: str | None = None) -> str | None:

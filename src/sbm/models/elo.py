@@ -40,6 +40,18 @@ class EloBook:
         adj = delta * self.params.rest_points_per_day
         return max(-self.params.rest_cap, min(self.params.rest_cap, adj))
 
+    def neutral_home_margin(self, game: Game) -> float:
+        """Elo gap in points. Home field and rest are not included."""
+        diff = self._rating_for_season(game.home_team, game.season) - self._rating_for_season(
+            game.away_team, game.season
+        )
+        return diff / self.params.elo_per_point
+
+    def favorability(self, team: str, season: int) -> float:
+        """Points versus an average opponent. No home field, no rest."""
+        rating = self._rating_for_season(team, season)
+        return (rating - self.params.base_elo) / self.params.elo_per_point
+
     def predicted_home_margin(self, game: Game) -> float:
         hfa = 0.0 if game.is_neutral else self.params.hfa_points
         diff = self._rating_for_season(game.home_team, game.season) - self._rating_for_season(

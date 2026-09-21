@@ -10,6 +10,7 @@ from sbm.teams import (
     render_logo_url,
     search_blob,
     team_color,
+    team_face,
 )
 
 
@@ -77,6 +78,20 @@ def test_nfl_logo_uses_espn_slug() -> None:
     assert logo_url(League.NFL, "WAS").endswith("/wsh.png")
     assert logo_url(League.NFL, "KC").endswith("/kc.png")
     assert "ncaa/500/87.png" in (logo_url(League.CFB, "Notre Dame") or "")
+
+
+def test_team_face_renders_ttun_and_keeps_the_stored_name() -> None:
+    face = team_face(League.CFB, "Michigan", "B1G")
+    assert face.team == "Michigan"
+    assert face.display_name == "The Team Up North"
+    assert face.abbrev == "TTUN"
+    assert face.logo_mark == "❌"
+    assert face.logo_url is None
+    assert "ttun" in face.search_text
+    assert "wolverines" in face.search_text
+    state = team_face(League.CFB, "Michigan State")
+    assert state.abbrev == "MSU"
+    assert state.logo_url
 
 
 def test_cfb_team_color_is_school_primary() -> None:

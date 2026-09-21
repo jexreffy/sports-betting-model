@@ -32,6 +32,8 @@ def _nav() -> list[dict[str, str]]:
     return [
         {"href": "/research", "label": "Research", "key": "research"},
         {"href": "/predictions", "label": "Predictions", "key": "predictions"},
+        {"href": "/ratings", "label": "Ratings", "key": "ratings"},
+        {"href": "/rankings", "label": "Rankings", "key": "rankings"},
         {"href": "/journal", "label": "Journal", "key": "journal"},
     ]
 
@@ -60,7 +62,8 @@ class JournalDropRequest(BaseModel):
 class PredictionsSetRequest(BaseModel):
     season: int = RESEARCH_WINDOWS.hands_off
     game_id: str
-    predicted_winner: str
+    predicted_winner: str | None = None
+    choice: str | None = None
 
 
 class PredictionsNoteRequest(BaseModel):
@@ -75,6 +78,8 @@ def _board_payload(league: str | None = None) -> dict:
     from sbm.data.store import load_games
     from sbm.errors import week_error_report
     from sbm.predictions import load_book, winners_by_game
+    from sbm.rankings import load_rankings
+    from sbm.units import load_unit_book
     from sbm.web.board import game_cards
 
     lg = League(league) if league in {item.value for item in League} else None
@@ -82,6 +87,13 @@ def _board_payload(league: str | None = None) -> dict:
     games = [g for g in catalog if lg is None or g.league == lg]
     season = RESEARCH_WINDOWS.hands_off
     book = load_book(season)
+    units = load_unit_book()
+    ranks = load_rankings(season)
+    you_ranks = {
+        (group, team): index + 1
+        for group, names in ranks.groups.items()
+        for index, team in enumerate(names)
+    }
     cards, picks = (
         game_cards(
             games,
@@ -89,6 +101,8 @@ def _board_payload(league: str | None = None) -> dict:
             lg,
             season=season,
             predicted_winners=winners_by_game(book),
+            units=units,
+            you_ranks=you_ranks,
         )
         if games
         else ([], [])
@@ -105,7 +119,12 @@ def _board_payload(league: str | None = None) -> dict:
     inferred = infer_current_week(games, season=season) if games else None
     if inferred is not None:
         errors = week_error_report(
-            games, season=inferred[0], week=inferred[1], mode=Mode.SIMULATION, league=lg
+            games,
+            season=inferred[0],
+            week=inferred[1],
+            mode=Mode.SIMULATION,
+            league=lg,
+            units=units,
         ).model_dump(mode="json")
     return {
         "mode": Mode.SIMULATION.value,
@@ -155,21 +174,38 @@ def _ensure_predictions(season: int):
     return updated
 
 
+def _button_label(abbrev: str, favorite: str | None, team: str, laying: float) -> str:
+    if favorite is None or favorite != team:
+        return abbrev
+    return f"{abbrev} -{laying:.1f}"
+
+
 def _predictions_payload(season: int, conference: str | None = None) -> dict:
+    from sbm.backtest import pregame_predictions
     from sbm.data.store import load_games
-    from sbm.predictions import bye_weeks, format_kickoff_cdt, leftovers_for
-    from sbm.teams import (
-        render_abbrev,
-        render_display_name,
-        render_logo_mark,
-        render_logo_url,
-        search_blob,
-        team_color,
+    from sbm.predictions import (
+        audit_covers,
+        bye_weeks,
+        format_kickoff_cdt,
+        leftovers_for,
+        save_book,
     )
+    from sbm.teams import team_face
+    from sbm.units import favorite_side, load_unit_book
     from sbm.web.board import is_international_venue
 
     book = _ensure_predictions(season)
-    games_by_id = {g.game_id: g for g in load_games() if g.season == season}
+    catalog = load_games()
+    games_by_id = {g.game_id: g for g in catalog if g.season == season}
+    preds, _engines = pregame_predictions(catalog, units=load_unit_book())
+    margins = {
+        game_id: pred.predicted_home_margin
+        for game_id, pred in preds.items()
+        if game_id in games_by_id
+    }
+    book, changed = audit_covers(book, margins, games_by_id)
+    if changed:
+        save_book(book)
     teams = book.teams
     if conference:
         if conference.lower() == "nfl":
@@ -178,40 +214,56 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
             teams = [t for t in teams if t.conference == conference]
     views = []
     for team in teams:
+        face = team_face(team.league, team.team, team.conference)
         data = team.model_dump(mode="json")
-        data["logo_url"] = render_logo_url(team.league, team.team)
-        data["logo_mark"] = render_logo_mark(team.league, team.team)
-        data["display_name"] = render_display_name(team.league, team.team)
-        data["abbrev"] = render_abbrev(team.league, team.team)
-        data["color"] = team_color(team.league, team.team, team.conference)
-        data["search_text"] = " ".join(
-            [
-                search_blob(team.league, team.team),
-                render_display_name(team.league, team.team),
-                render_abbrev(team.league, team.team),
-                team.conference,
-            ]
-        ).lower()
+        data["logo_url"] = face.logo_url
+        data["logo_mark"] = face.logo_mark
+        data["display_name"] = face.display_name
+        data["abbrev"] = face.abbrev
+        data["color"] = face.color
+        data["search_text"] = face.search_text
         for row in data["games"]:
             away = row["opponent"] if row["is_home"] else team.team
             home = team.team if row["is_home"] else row["opponent"]
+            away_face = team_face(team.league, away)
+            home_face = team_face(team.league, home)
+            opp_face = team_face(team.league, row["opponent"])
             raw_kick = row.get("kickoff")
             kickoff = None
             if isinstance(raw_kick, datetime):
                 kickoff = raw_kick
             elif isinstance(raw_kick, str) and raw_kick:
                 kickoff = datetime.fromisoformat(raw_kick.replace("Z", "+00:00"))
+            margin = margins.get(row["game_id"])
+            favorite = None
+            laying = 0.0
+            if margin is not None:
+                favorite, laying = favorite_side(margin, away, home)
+            kind = row.get("pick_kind")
+            winner = row.get("predicted_winner")
+            if kind == "cover":
+                selected = "cover"
+            elif winner == away:
+                selected = "away"
+            elif winner == home:
+                selected = "home"
+            else:
+                selected = ""
             row["away_team"] = away
             row["home_team"] = home
-            row["away_abbrev"] = render_abbrev(team.league, away)
-            row["home_abbrev"] = render_abbrev(team.league, home)
-            row["opp_display"] = render_display_name(team.league, row["opponent"])
-            row["away_logo_url"] = render_logo_url(team.league, away)
-            row["home_logo_url"] = render_logo_url(team.league, home)
-            row["opp_logo_url"] = render_logo_url(team.league, row["opponent"])
-            row["away_logo_mark"] = render_logo_mark(team.league, away)
-            row["home_logo_mark"] = render_logo_mark(team.league, home)
-            row["opp_logo_mark"] = render_logo_mark(team.league, row["opponent"])
+            row["away_abbrev"] = away_face.abbrev
+            row["home_abbrev"] = home_face.abbrev
+            row["away_label"] = _button_label(away_face.abbrev, favorite, away, laying)
+            row["home_label"] = _button_label(home_face.abbrev, favorite, home, laying)
+            row["cover_enabled"] = favorite is not None
+            row["selected"] = selected
+            row["opp_display"] = opp_face.display_name
+            row["away_logo_url"] = away_face.logo_url
+            row["home_logo_url"] = home_face.logo_url
+            row["opp_logo_url"] = opp_face.logo_url
+            row["away_logo_mark"] = away_face.logo_mark
+            row["home_logo_mark"] = home_face.logo_mark
+            row["opp_logo_mark"] = opp_face.logo_mark
             row["kickoff_label"] = format_kickoff_cdt(kickoff, team.league)
             stored = games_by_id.get(row["game_id"])
             row["international"] = bool(
@@ -234,8 +286,37 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
         views.append(data)
     leftovers = leftovers_for(book, None if not conference else conference)
     for row in leftovers:
-        row["team"] = render_display_name(League.CFB, row["team"])
-        row["opponent"] = render_display_name(League.CFB, row["opponent"])
+        row["team"] = team_face(League.CFB, row["team"]).display_name
+        row["opponent"] = team_face(League.CFB, row["opponent"]).display_name
+    change_label = {
+        "flip": "Favorite flipped",
+        "move": "Line moved by 3+",
+        "pickem": "Line inside half a point",
+    }
+    audits = []
+    for item in reversed(book.audits):
+        game = games_by_id.get(item.game_id)
+        league = game.league if game is not None else League.NFL
+        if game is not None:
+            label = (
+                f"{team_face(league, game.away_team).abbrev} @ "
+                f"{team_face(league, game.home_team).abbrev}"
+            )
+        else:
+            label = item.label
+        if item.new_favorite is None:
+            new_text = "pick'em"
+        else:
+            new_text = f"{team_face(league, item.new_favorite).abbrev} -{item.new_line:.1f}"
+        audits.append(
+            {
+                "game_id": item.game_id,
+                "label": label,
+                "change": change_label.get(item.change, item.change),
+                "old_text": f"{team_face(league, item.old_favorite).abbrev} -{item.old_line:.1f}",
+                "new_text": new_text,
+            }
+        )
     return {
         "banner": (
             "Predictions — current-year W/L takes. Results fill in; picks never auto-flip. "
@@ -245,6 +326,7 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
         "conference": conference or "all",
         "teams": views,
         "leftovers": leftovers,
+        "audits": audits,
         "nav": _nav(),
         "active": "predictions",
     }
@@ -293,6 +375,238 @@ def research(request: Request, league: str | None = None) -> HTMLResponse:
         },
         headers={"Cache-Control": "no-store"},
     )
+
+
+def _live_model(season: int):
+    from sbm.backtest import infer_current_week, pregame_predictions
+    from sbm.data.store import load_games
+    from sbm.units import load_unit_book
+
+    games = load_games()
+    units = load_unit_book()
+    _preds, engines = pregame_predictions(games, units=units)
+    found = infer_current_week(games, season=season)
+    week = found[1] if found else 1
+    return games, engines, units, week
+
+
+def _teams_for_group(games, season: int, group: str) -> list[tuple]:
+    from sbm.teams import cfb_p4_conference
+
+    found: dict[str, League] = {}
+    for game in games:
+        if game.season != season:
+            continue
+        sides = (
+            (game.home_team, game.home_conference),
+            (game.away_team, game.away_conference),
+        )
+        for team, conference in sides:
+            if group == "nfl" and game.league == League.NFL:
+                found[team] = League.NFL
+            elif game.league == League.CFB and group != "nfl":
+                if (cfb_p4_conference(team) or conference) == group:
+                    found[team] = League.CFB
+    return list(found.items())
+
+
+def _ordered_teams(games, engines, season: int, group: str) -> list[str]:
+    rows = _teams_for_group(games, season, group)
+
+    def _nff(item: tuple[str, League]) -> float:
+        team, league = item
+        engine = engines.get(league)
+        if engine is None:
+            return 0.0
+        return engine.elo.favorability(team, season)
+
+    rows.sort(key=lambda item: (-_nff(item), item[0]))
+    return [team for team, _league in rows]
+
+
+def _fmt_unit(value: float | None, digits: int = 2) -> str:
+    if value is None:
+        return "—"
+    return f"{value:+.{digits}f}"
+
+
+def _ratings_payload(league: str | None) -> dict:
+    from sbm.teams import team_face
+
+    season = RESEARCH_WINDOWS.hands_off
+    games, engines, units, week = _live_model(season)
+    wanted = League(league) if league in {item.value for item in League} else League.NFL
+    rows = []
+    seen: set[tuple[str, str]] = set()
+    for game in games:
+        if game.season != season:
+            continue
+        if wanted is not None and game.league != wanted:
+            continue
+        for team, conference in (
+            (game.home_team, game.home_conference),
+            (game.away_team, game.away_conference),
+        ):
+            key = (game.league.value, team)
+            if key in seen:
+                continue
+            seen.add(key)
+            engine = engines.get(game.league)
+            nff = engine.elo.favorability(team, season) if engine is not None else 0.0
+            profile = units.profile_before(game.league, team, season, week)
+            face = team_face(game.league, team, conference)
+            if game.league == League.NFL:
+                run = _fmt_unit(None if profile is None else profile.rush_off)
+                passing = _fmt_unit(None if profile is None else profile.pass_off)
+                talent = "—"
+            else:
+                run = _fmt_unit(None if profile is None else profile.line_yards, 1)
+                passing = _fmt_unit(None if profile is None else profile.pass_success)
+                if profile is None or profile.talent is None:
+                    talent = "—"
+                else:
+                    talent = f"{profile.talent:.0f}"
+            rows.append(
+                {
+                    "display_name": face.display_name,
+                    "abbrev": face.abbrev,
+                    "logo_url": face.logo_url,
+                    "logo_mark": face.logo_mark,
+                    "color": face.color or "#30363d",
+                    "nff": nff,
+                    "nff_text": f"{nff:+.1f}",
+                    "run": run,
+                    "passing": passing,
+                    "talent": talent,
+                }
+            )
+    rows.sort(key=lambda row: row["nff"], reverse=True)
+    return {
+        "banner": "Ratings — neutral-field favorability versus an average opponent.",
+        "season": season,
+        "league": wanted.value,
+        "league_label": wanted.value.upper(),
+        "rows": rows,
+        "nav": _nav(),
+        "active": "ratings",
+    }
+
+
+RANKING_GROUPS = ("nfl", "B1G", "SEC", "ACC", "Big 12")
+
+
+def _rankings_payload(season: int, group: str) -> dict:
+    from sbm.rankings import load_rankings, visible_order
+    from sbm.teams import team_face
+
+    chosen = group if group in RANKING_GROUPS else "nfl"
+    games, engines, _units, _week = _live_model(season)
+    book = load_rankings(season)
+    model_order = _ordered_teams(games, engines, season, chosen)
+    saved = book.groups.get(chosen, [])
+    order = visible_order(saved, model_order)
+    league = League.NFL if chosen == "nfl" else League.CFB
+    rows = []
+    for index, team in enumerate(order):
+        face = team_face(league, team)
+        rows.append(
+            {
+                "team": team,
+                "rank": index + 1,
+                "display_name": face.display_name,
+                "abbrev": face.abbrev,
+                "logo_url": face.logo_url,
+                "logo_mark": face.logo_mark,
+                "color": face.color or "#30363d",
+                "saved": bool(saved),
+            }
+        )
+    return {
+        "banner": (
+            "Rankings — your order. Research shows it beside the model and does not recolor cards."
+        ),
+        "season": season,
+        "group": chosen,
+        "groups": RANKING_GROUPS,
+        "rows": rows,
+        "saved": bool(saved),
+        "nav": _nav(),
+        "active": "rankings",
+    }
+
+
+class RankingsMoveRequest(BaseModel):
+    season: int = RESEARCH_WINDOWS.hands_off
+    group: str
+    team: str
+    direction: str
+
+
+class RankingsPlaceRequest(BaseModel):
+    season: int = RESEARCH_WINDOWS.hands_off
+    group: str
+    team: str
+    index: int
+
+
+@app.get("/ratings", response_class=HTMLResponse)
+def ratings_page(request: Request, league: str | None = None) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "ratings.html",
+        _ratings_payload(league),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/rankings", response_class=HTMLResponse)
+def rankings_page(
+    request: Request,
+    season: int = RESEARCH_WINDOWS.hands_off,
+    group: str = "nfl",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "rankings.html",
+        _rankings_payload(season, group),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/rankings/move")
+def api_rankings_move(body: RankingsMoveRequest) -> JSONResponse:
+    from sbm.rankings import load_rankings, move_team, save_rankings, visible_order
+
+    if body.group not in RANKING_GROUPS:
+        raise HTTPException(status_code=400, detail="Unknown group")
+    games, engines, _units, _week = _live_model(body.season)
+    book = load_rankings(body.season)
+    model_order = _ordered_teams(games, engines, body.season, body.group)
+    current = visible_order(book.groups.get(body.group, []), model_order)
+    try:
+        book.groups[body.group] = move_team(current, body.team, body.direction)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    save_rankings(book)
+    return JSONResponse(book.model_dump(mode="json"))
+
+
+@app.post("/api/rankings/place")
+def api_rankings_place(body: RankingsPlaceRequest) -> JSONResponse:
+    from sbm.rankings import load_rankings, place_team, save_rankings, visible_order
+
+    if body.group not in RANKING_GROUPS:
+        raise HTTPException(status_code=400, detail="Unknown group")
+    games, engines, _units, _week = _live_model(body.season)
+    book = load_rankings(body.season)
+    model_order = _ordered_teams(games, engines, body.season, body.group)
+    current = visible_order(book.groups.get(body.group, []), model_order)
+    try:
+        book.groups[body.group] = place_team(current, body.team, body.index)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    save_rankings(book)
+    return JSONResponse(book.model_dump(mode="json"))
 
 
 @app.get("/journal", response_class=HTMLResponse)
@@ -375,11 +689,34 @@ def api_predictions(
 
 @app.post("/api/predictions/set")
 def api_predictions_set(body: PredictionsSetRequest) -> JSONResponse:
-    from sbm.predictions import save_book, set_winner
+    from sbm.backtest import pregame_predictions
+    from sbm.data.store import load_games
+    from sbm.predictions import save_book, set_pick, set_winner
+    from sbm.units import load_unit_book
 
     book = _ensure_predictions(body.season)
     try:
-        updated = set_winner(book, body.game_id, body.predicted_winner)
+        if body.choice:
+            catalog = load_games()
+            game = next((g for g in catalog if g.game_id == body.game_id), None)
+            if game is None:
+                raise ValueError(f"Unknown game {body.game_id}")
+            preds, _engines = pregame_predictions(catalog, units=load_unit_book())
+            pred = preds.get(body.game_id)
+            if pred is None:
+                raise ValueError(f"No model number for {body.game_id}")
+            updated = set_pick(
+                book,
+                body.game_id,
+                body.choice,
+                home_margin=pred.predicted_home_margin,
+                away_team=game.away_team,
+                home_team=game.home_team,
+            )
+        elif body.predicted_winner:
+            updated = set_winner(book, body.game_id, body.predicted_winner)
+        else:
+            raise ValueError("Provide choice or predicted_winner")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     save_book(updated)

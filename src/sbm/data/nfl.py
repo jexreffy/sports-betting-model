@@ -113,6 +113,30 @@ NFLVERSE_GAMES_CSV = (
 )
 
 
+NFLVERSE_TEAM_STATS = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "stats_team/stats_team_week_{season}.csv"
+)
+
+
+def download_nfl_team_stats(seasons: list[int]) -> list[dict]:
+    """Weekly offense EPA and sack counts. Defense is the opponent's offense that week."""
+    from urllib.error import HTTPError
+
+    rows: list[dict] = []
+    for season in seasons:
+        url = NFLVERSE_TEAM_STATS.format(season=season)
+        try:
+            frame = pd.read_csv(url)
+        except HTTPError as exc:
+            if exc.code == 404:
+                continue
+            raise
+        frame["season"] = season
+        rows.extend(frame.to_dict(orient="records"))
+    return rows
+
+
 def download_nfl_games(seasons: list[int]) -> list[Game]:
     """Pull official nflverse schedules (results + closing lines). No third-party wrapper."""
     df = pd.read_csv(NFLVERSE_GAMES_CSV)

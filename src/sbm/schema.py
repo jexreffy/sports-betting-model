@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -231,6 +232,21 @@ class SeasonGameTake(BaseModel):
     actual_winner: str | None = None
     leftover: bool = False
     kickoff: datetime | None = None
+    pick_kind: Literal["outright", "cover"] | None = None
+    cover_favorite: str | None = None
+    cover_line: float | None = None
+
+
+class LineAudit(BaseModel):
+    """Cover rewritten to an outright win after the model number moved."""
+
+    game_id: str
+    label: str
+    old_favorite: str
+    old_line: float
+    new_favorite: str | None = None
+    new_line: float
+    change: Literal["flip", "move", "pickem"]
 
 
 class TeamSeasonTake(BaseModel):
@@ -248,3 +264,4 @@ class TeamSeasonTake(BaseModel):
 class SeasonPredictions(BaseModel):
     season: int
     teams: list[TeamSeasonTake] = Field(default_factory=list)
+    audits: list[LineAudit] = Field(default_factory=list)

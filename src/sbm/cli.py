@@ -54,19 +54,30 @@ def ingest(
     seasons = _seasons(start, end)
     targets = [League.NFL, League.CFB] if league == "all" else [League(league.lower())]
     if League.NFL in targets:
-        from sbm.data.nfl import download_nfl_games
+        from sbm.data.nfl import download_nfl_games, download_nfl_team_stats
+        from sbm.units import nfl_unit_weeks, save_units
 
         typer.echo(f"Ingesting NFL {seasons[0]}-{seasons[-1]}…")
         games = download_nfl_games(seasons)
         path = save_games(League.NFL, games, replace_seasons=set(seasons))
         typer.echo(f"Wrote {len(games)} NFL games to {path}")
+        stats = download_nfl_team_stats(seasons)
+        weeks = nfl_unit_weeks(stats, games)
+        units = save_units(weeks, league=League.NFL, replace_seasons=set(seasons))
+        typer.echo(f"Wrote {len(weeks)} NFL unit weeks to {units}")
     if League.CFB in targets:
-        from sbm.data.cfb import download_cfb_games
+        from sbm.data.cfb import download_cfb_advanced, download_cfb_games, download_cfb_talent
+        from sbm.units import cfb_unit_weeks, save_units
 
         typer.echo(f"Ingesting CFB FBS {seasons[0]}-{seasons[-1]}…")
         games = download_cfb_games(seasons)
         path = save_games(League.CFB, games, replace_seasons=set(seasons))
         typer.echo(f"Wrote {len(games)} CFB games to {path}")
+        advanced = download_cfb_advanced(seasons)
+        talent = download_cfb_talent(seasons)
+        weeks = cfb_unit_weeks(advanced, talent)
+        units = save_units(weeks, league=League.CFB, replace_seasons=set(seasons))
+        typer.echo(f"Wrote {len(weeks)} CFB unit weeks to {units}")
 
 
 @simulate_app.command("backtest")
@@ -82,6 +93,7 @@ def simulate_backtest(
     from sbm.paper import Ledger
     from sbm.paths import historical_ledger_path
     from sbm.reports import write_bankroll_chart, write_picks_csv, write_summary_json
+    from sbm.units import load_unit_book
 
     lg = _league(league)
     games = load_games(lg)
@@ -90,7 +102,9 @@ def simulate_backtest(
     ledger = Ledger(Mode.SIMULATION, path=historical_ledger_path(Mode.SIMULATION))
     if ledger.path.exists():
         ledger.path.unlink()
-    apply_backtest_to_ledger(games, ledger, start_season=start, end_season=end)
+    apply_backtest_to_ledger(
+        games, ledger, start_season=start, end_season=end, units=load_unit_book()
+    )
     summary = ledger.summary()
     typer.echo(
         f"Windows: warmup {RESEARCH_WINDOWS.warmup_start}-{RESEARCH_WINDOWS.warmup_end} "
@@ -176,6 +190,16 @@ def simulate_tune(
     path = write_tune_report(report, report_dir / "tune.json")
     typer.echo(report.model_dump_json(indent=2))
     typer.echo(f"Wrote {path}")
+    from sbm.units import load_unit_book
+
+    units = load_unit_book()
+    if units.weeks:
+        from sbm.tune import tune_factors
+
+        factors = tune_factors(games, units)
+        factor_path = write_tune_report(factors, report_dir / "factors.json")
+        typer.echo(factors.model_dump_json(indent=2))
+        typer.echo(f"Wrote {factor_path}")
     typer.echo("Suggested params are not applied automatically.")
 
 
@@ -414,6 +438,7 @@ def _settle(mode: Mode, season: int | None, week: int | None) -> None:
     from sbm.data.store import games_by_id, load_games
     from sbm.errors import week_error_report
     from sbm.paper import Ledger
+    from sbm.units import load_unit_book
 
     ledger = Ledger(mode)
     games = load_games()
@@ -428,7 +453,9 @@ def _settle(mode: Mode, season: int | None, week: int | None) -> None:
     typer.echo(f"Settled {n} {mode.value} picks for {season}w{week}")
     typer.echo(ledger.summary(season=season, week=week).model_dump_json(indent=2))
     if season is not None and week is not None:
-        report = week_error_report(games, season=season, week=week, mode=mode)
+        report = week_error_report(
+            games, season=season, week=week, mode=mode, units=load_unit_book()
+        )
         typer.echo(report.model_dump_json(indent=2))
 
 

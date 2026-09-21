@@ -5,8 +5,10 @@ from collections import defaultdict
 from sbm.backtest import current_slate
 from sbm.config import get_settings, params_for
 from sbm.mode import Mode
+from sbm.models.engine import ModelEngine
 from sbm.schema import Game, League, Pick, Prediction
-from sbm.teams import abbrev_side, render_abbrev, render_display_name, search_blob
+from sbm.teams import abbrev_side, cfb_p4_conference, team_face
+from sbm.units import UnitBook, home_adjustment
 
 INTERNATIONAL_VENUE_MARKERS = (
     "wembley",
@@ -95,19 +97,79 @@ def game_cards(
     season: int | None = None,
     week: int | None = None,
     predicted_winners: dict[str, str] | None = None,
+    units: UnitBook | None = None,
+    you_ranks: dict[tuple[str, str], int] | None = None,
 ) -> tuple[list[dict], list[Pick]]:
-    slate, picks, _ = current_slate(
-        games, mode=mode, league=league, season=season, week=week
+    slate, picks, engines = current_slate(
+        games, mode=mode, league=league, season=season, week=week, units=units
     )
     by_game: dict[str, list[Pick]] = defaultdict(list)
     for pick in picks:
         by_game[pick.game_id].append(pick)
     winners = predicted_winners or {}
+    target_season = season
+    if target_season is None and slate:
+        target_season = slate[0][0].season
+    model_ranks = _model_ranks(engines, games, target_season) if target_season else {}
     cards = [
-        _card(game, pred, by_game.get(game.game_id, []), winners.get(game.game_id))
+        _card(
+            game,
+            pred,
+            by_game.get(game.game_id, []),
+            winners.get(game.game_id),
+            engine=engines.get(game.league),
+            units=units,
+            model_ranks=model_ranks,
+            you_ranks=you_ranks or {},
+        )
         for game, pred in slate
     ]
     return cards, picks
+
+
+def _group_for(game: Game, team: str, *, home: bool) -> str:
+    if game.league == League.NFL:
+        return "nfl"
+    conference = game.home_conference if home else game.away_conference
+    return cfb_p4_conference(team) or conference or ""
+
+
+def _model_ranks(
+    engines: dict[League, ModelEngine], games: list[Game], season: int
+) -> dict[str, dict[str, int]]:
+    buckets: dict[str, set[str]] = defaultdict(set)
+    leagues: dict[str, League] = {}
+    for game in games:
+        if game.season != season:
+            continue
+        for team, home in ((game.home_team, True), (game.away_team, False)):
+            group = _group_for(game, team, home=home)
+            if not group:
+                continue
+            buckets[group].add(team)
+            leagues[group] = game.league
+    ranks: dict[str, dict[str, int]] = {}
+    for group, teams in buckets.items():
+        engine = engines.get(leagues[group])
+        if engine is None:
+            continue
+        ordered = sorted(
+            teams,
+            key=lambda team: (-engine.elo.favorability(team, season), team),
+        )
+        ranks[group] = {team: index + 1 for index, team in enumerate(ordered)}
+    return ranks
+
+
+def _rank_text(you: int | None, model: int | None) -> str | None:
+    parts: list[str] = []
+    if you is not None:
+        parts.append(f"You: {you}")
+    if model is not None:
+        parts.append(f"Model: {model}")
+    if not parts:
+        return None
+    return " / ".join(parts)
 
 
 def _pick_view(game: Game, pick: Pick | None) -> dict | None:
@@ -148,7 +210,7 @@ def _wager_options(game: Game, name: str) -> list[dict]:
     return [
         {
             "side": "away",
-            "label": render_abbrev(game.league, game.away_team),
+            "label": team_face(game.league, game.away_team).abbrev,
             "team_or_side": game.away_team,
             "opponent": game.home_team,
             "market_line": away_line,
@@ -156,7 +218,7 @@ def _wager_options(game: Game, name: str) -> list[dict]:
         },
         {
             "side": "home",
-            "label": render_abbrev(game.league, game.home_team),
+            "label": team_face(game.league, game.home_team).abbrev,
             "team_or_side": game.home_team,
             "opponent": game.away_team,
             "market_line": home_line,
@@ -232,10 +294,17 @@ def _card(
     pred: Prediction,
     model_picks: list[Pick],
     predicted_winner: str | None,
+    *,
+    engine: ModelEngine | None = None,
+    units: UnitBook | None = None,
+    model_ranks: dict[str, dict[str, int]] | None = None,
+    you_ranks: dict[tuple[str, str], int] | None = None,
 ) -> dict:
     model_home_line = -pred.predicted_home_margin
-    away_code = render_abbrev(game.league, game.away_team)
-    home_code = render_abbrev(game.league, game.home_team)
+    away_face = team_face(game.league, game.away_team, game.away_conference)
+    home_face = team_face(game.league, game.home_team, game.home_conference)
+    away_code = away_face.abbrev
+    home_code = home_face.abbrev
     markets = [
         _market_block(
             game,
@@ -292,6 +361,23 @@ def _card(
         chips.append("You fade")
     elif card_fill == "model":
         chips.append("Model fade")
+    if engine is None:
+        neutral = pred.predicted_home_margin
+        edge = None
+    else:
+        neutral = engine.elo.neutral_home_margin(game)
+        _points, edge = home_adjustment(game, units, engine.params)
+    full = _fmt_spread(-pred.predicted_home_margin)
+    neutral_text = _fmt_spread(-neutral)
+    model_context = f"Model {full} · Neutral {neutral_text}"
+    if edge:
+        model_context = f"{model_context} · {edge}"
+    ranks = model_ranks or {}
+    yours = you_ranks or {}
+    away_group = _group_for(game, game.away_team, home=False)
+    home_group = _group_for(game, game.home_team, home=True)
+    away_model = ranks.get(away_group, {}).get(game.away_team)
+    home_model = ranks.get(home_group, {}).get(game.home_team)
     return {
         "game_id": game.game_id,
         "league": game.league.value,
@@ -299,10 +385,13 @@ def _card(
         "week": game.week,
         "away_team": game.away_team,
         "home_team": game.home_team,
-        "away_display": render_display_name(game.league, game.away_team),
-        "home_display": render_display_name(game.league, game.home_team),
+        "away_display": away_face.display_name,
+        "home_display": home_face.display_name,
         "away_abbrev": away_code,
         "home_abbrev": home_code,
+        "model_context": model_context,
+        "away_rank": _rank_text(yours.get((away_group, game.away_team)), away_model),
+        "home_rank": _rank_text(yours.get((home_group, game.home_team)), home_model),
         "kickoff": game.kickoff.isoformat() if game.kickoff else None,
         "is_final": game.is_final,
         "away_score": game.away_score,
@@ -315,7 +404,7 @@ def _card(
         "noisy": any(m["noisy"] for m in markets),
         "early_season": any(m["early_season"] for m in markets),
         "international": any(m["international"] for m in markets),
-        "search_text": search_blob(game.league, game.away_team, game.home_team),
+        "search_text": f"{away_face.search_text} {home_face.search_text}",
         "markets": markets,
         "picks": [p.model_dump(mode="json") for p in model_picks],
     }
