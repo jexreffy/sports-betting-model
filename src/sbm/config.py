@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("data"), validation_alias="SBM_DATA_DIR")
     cfbd_api_key: str | None = Field(default=None, validation_alias="CFBD_API_KEY")
     the_odds_api_key: str | None = Field(default=None, validation_alias="THE_ODDS_API_KEY")
-    live_practice: bool = Field(default=True, validation_alias="SBM_LIVE_PRACTICE")
     spread_edge_points: float = 1.5
     total_edge_points: float = 1.5
     moneyline_min_ev: float = 0.03

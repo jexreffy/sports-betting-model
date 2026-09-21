@@ -31,5 +31,20 @@ def historical_ledger_path(mode: Mode) -> Path:
     return mode_dir(mode) / "historical_ledger.jsonl"
 
 
+def journal_dir() -> Path:
+    path = data_root() / "journal"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def journal_tickets_path() -> Path:
+    return journal_dir() / "tickets.jsonl"
+
+
+def live_ledger_legacy_path() -> Path:
+    """Pre-Journal paper file. Read for migrate only; never write."""
+    return data_root() / "live" / "ledger.jsonl"
+
+
 def games_path(league: str) -> Path:
     return raw_dir() / f"{league}_games.jsonl"

@@ -36,6 +36,11 @@ class StakeColumn(StrEnum):
     GUT = "gut"
 
 
+class TicketKind(StrEnum):
+    STRAIGHT = "straight"
+    PARLAY = "parlay"
+
+
 class Game(BaseModel):
     game_id: str
     league: League
@@ -135,6 +140,63 @@ class ColumnStats(BaseModel):
     units: float = 0.0
     roi: float | None = None
     ats_pct: float | None = None
+
+
+class Leg(BaseModel):
+    """One side of a Journal ticket. Props may omit market and game_id."""
+
+    league: League
+    season: int
+    week: int
+    team_or_side: str
+    game_id: str | None = None
+    market: Market | None = None
+    side: Side | None = None
+    market_line: float | None = None
+    american_odds: int | None = None
+    opponent: str | None = None
+
+
+class Ticket(BaseModel):
+    ticket_id: str
+    season: int
+    sportsbook: str
+    stake_dollars: float
+    american_odds: int
+    kind: TicketKind
+    legs: list[Leg]
+    result: str | None = None
+    profit_dollars: float | None = None
+    cashout_dollars: float | None = None
+    implied_prob: float | None = None
+    placed_at: datetime | None = None
+    settled_at: datetime | None = None
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def valid_ticket(self) -> "Ticket":
+        if not self.legs:
+            raise ValueError("Ticket needs at least one leg")
+        if self.kind == TicketKind.STRAIGHT and len(self.legs) != 1:
+            raise ValueError("Straight tickets need exactly one leg")
+        if self.kind == TicketKind.PARLAY and len(self.legs) < 2:
+            raise ValueError("Parlays need at least two legs")
+        if self.result == "cashout" and self.cashout_dollars is None:
+            raise ValueError("Cash-out tickets need cashout_dollars")
+        return self
+
+
+class JournalYearStats(BaseModel):
+    season: int
+    n_tickets: int = 0
+    n_open: int = 0
+    hits: int = 0
+    misses: int = 0
+    pushes: int = 0
+    cashed_early: int = 0
+    staked_dollars: float = 0.0
+    profit_dollars: float = 0.0
+    roi: float | None = None
 
 
 class SummaryStats(BaseModel):

@@ -9,7 +9,7 @@ services:
       SBM_DATA_DIR: /app/data
     volumes:
       - simulation-data:/app/data/simulation
-      - live-data:/app/data/live
+      - journal-data:/app/data/journal
       - raw-data:/app/data/raw
     command: ["sbm", "serve", "--host", "0.0.0.0", "--port", "8000"]
 
@@ -22,11 +22,11 @@ services:
       SBM_DATA_DIR: /app/data
     volumes:
       - simulation-data:/app/data/simulation
-      - live-data:/app/data/live
+      - journal-data:/app/data/journal
       - raw-data:/app/data/raw
     command: ["sbm", "ingest", "--league", "all"]
 
 volumes:
   simulation-data:
-  live-data:
+  journal-data:
   raw-data:

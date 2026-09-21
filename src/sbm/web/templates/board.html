@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SBM — {{ mode }}</title>
+  <title>SBM — {{ active }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -13,9 +13,9 @@
 <body>
   <header>
     <div class="brand">SBM · NFL + CFB</div>
-    <nav class="switcher" aria-label="Mode">
-      {% for m in modes %}
-      <a class="{{ 'active-' + m if m == mode else '' }}" href="/?mode={{ m }}&league={{ league }}">{{ m }}</a>
+    <nav class="switcher" aria-label="Book">
+      {% for item in nav %}
+      <a class="{{ 'active-' + item.key if item.key == active else '' }}" href="{{ item.href }}">{{ item.label }}</a>
       {% endfor %}
     </nav>
   </header>
@@ -23,14 +23,15 @@
     <div class="banner">{{ banner }}</div>
     <div class="filters">
       League:
-      <a href="/?mode={{ mode }}&league=all">all</a>
-      <a href="/?mode={{ mode }}&league=nfl">nfl</a>
-      <a href="/?mode={{ mode }}&league=cfb">cfb</a>
+      <a href="/research?league=all">all</a>
+      <a href="/research?league=nfl">nfl</a>
+      <a href="/research?league=cfb">cfb</a>
       <label class="team-search">
         <span class="visually-hidden">Search teams</span>
         <input id="team-search" type="search" placeholder="Find a team (Steelers, Pitt, Michigan…)" autocomplete="off" />
       </label>
     </div>
+    {% if not look_only %}
     <section class="stats">
       <div class="stat"><span>System picks</span><strong>{{ summary.system.n_picks }}</strong></div>
       <div class="stat"><span>System units</span><strong>{{ summary.system.units }}</strong></div>
@@ -60,6 +61,7 @@
       <p class="empty">No booked sides yet. System is the model ticket; Gut is anything you take instead or besides. Unmarked markets are not bets.</p>
       {% endif %}
     </section>
+    {% endif %}
     <div class="grid">
       <section class="panel board-panel">
         <h2>This week’s board{% if slate_label %} <span class="slate-label">{{ slate_label }}</span>{% endif %}</h2>
@@ -117,7 +119,7 @@
                 {% if m.gut %}
                 <div class="pick-flag gut-flag">Gut {{ m.gut.ticket }}</div>
                 {% endif %}
-                {% if m.open_for_marks %}
+                {% if m.open_for_marks and not look_only %}
                 <div class="mark-row" data-game="{{ card.game_id }}" data-market="{{ m.name }}">
                   {% if m.model_ticket %}
                   <button type="button" data-column="system" data-side="{{ m.model_ticket.side }}">System {{ m.model_ticket.ticket }}</button>
@@ -139,7 +141,7 @@
         {% endif %}
       </section>
       <section class="panel">
-        <h2>Bankroll (System column, this mode)</h2>
+        <h2>Model tickets{% if look_only %} <span class="slate-label">(not your bankroll)</span>{% endif %}</h2>
         <canvas id="bankroll" height="220"></canvas>
       </section>
       {% if errors %}

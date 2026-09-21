@@ -79,12 +79,12 @@ def test_gut_moneyline_without_model_gate() -> None:
         predicted_total=45.0,
         home_win_prob=0.54,
     )
-    gated = picks_from_prediction(game, pred, Mode.LIVE, _settings())
+    gated = picks_from_prediction(game, pred, Mode.SIMULATION, _settings())
     assert Market.MONEYLINE not in {p.market for p in gated}
     pick = pick_from_market_side(
         game,
         pred,
-        mode=Mode.LIVE,
+        mode=Mode.SIMULATION,
         market=Market.MONEYLINE,
         side=Side.AWAY,
         column=StakeColumn.GUT,

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sbm"
 version = "0.1.0"
-description = "NFL and CFB paper-trading research tool with isolated simulation and live modes."
+description = "NFL and CFB research model with an isolated 2026 Journal."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Jeffrey" }]

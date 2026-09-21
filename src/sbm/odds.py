@@ -15,6 +15,22 @@ def american_to_decimal(odds: int) -> float:
     return 1.0 + 100.0 / abs(odds)
 
 
+def implied_to_american(prob: float) -> int:
+    if prob <= 0.0 or prob >= 1.0:
+        raise ValueError("Implied probability must be between 0 and 1")
+    if prob >= 0.5:
+        return int(round(-100.0 * prob / (1.0 - prob)))
+    return int(round(100.0 * (1.0 - prob) / prob))
+
+
+def decimal_to_american(decimal_odds: float) -> int:
+    if decimal_odds <= 1.0:
+        raise ValueError("Decimal odds must be greater than 1")
+    if decimal_odds >= 2.0:
+        return int(round((decimal_odds - 1.0) * 100.0))
+    return int(round(-100.0 / (decimal_odds - 1.0)))
+
+
 def american_to_implied(odds: int) -> float:
     if odds == 0:
         raise ValueError("American odds cannot be 0")
