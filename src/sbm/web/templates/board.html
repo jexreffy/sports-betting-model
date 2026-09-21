@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+  {% from "_club_name.html" import club_name %}
   <header>
     <div class="brand">SBM · NFL + CFB</div>
     <nav class="switcher" aria-label="Book">
@@ -51,13 +52,13 @@
             <div class="matchup">
               <div class="team away">
                 <span class="loc">Away</span>
-                <strong>{{ card.away_display }}</strong>
+                <strong><a href="{{ card.game_id|game_href }}">{{ club_name(card.away_place, card.away_nickname, card.away_display) }}</a></strong>
                 {% if card.away_score is not none %}<span class="score">{{ card.away_score }}</span>{% endif %}
               </div>
               <div class="at">@</div>
               <div class="team home">
                 <span class="loc">Home</span>
-                <strong>{{ card.home_display }}</strong>
+                <strong><a href="{{ card.game_id|game_href }}">{{ club_name(card.home_place, card.home_nickname, card.home_display) }}</a></strong>
                 {% if card.home_score is not none %}<span class="score">{{ card.home_score }}</span>{% endif %}
               </div>
             </div>

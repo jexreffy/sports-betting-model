@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+  {% from "_club_name.html" import club_name %}
   <header>
     <div class="brand">SBM · NFL + CFB</div>
     <nav class="switcher" aria-label="Book">
@@ -39,7 +40,7 @@
           </button>
           <span class="rank-num">{{ row.rank }}</span>
           {% if row.logo_mark %}<span class="team-mark" aria-hidden="true">{{ row.logo_mark }}</span>{% elif row.logo_url %}<img class="chip-logo" src="{{ row.logo_url }}" alt="" width="18" height="18" />{% endif %}
-          <span class="rank-name">{{ row.display_name }}</span>
+          <span class="rank-name">{{ club_name(row.place, row.nickname, row.display_name) }}</span>
           <span class="rank-moves">
             <button type="button" class="rank-move" data-team="{{ row.team }}" data-dir="up" aria-label="Move {{ row.display_name }} up"><span></span></button>
             <button type="button" class="rank-move" data-team="{{ row.team }}" data-dir="down" aria-label="Move {{ row.display_name }} down"><span></span></button>

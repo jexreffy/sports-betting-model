@@ -7,6 +7,7 @@ A local research tool that prices NFL and FBS **spreads, moneylines, and totals*
 | Surface | What it is | Store |
 | --- | --- | --- |
 | **Research** | This week's Elo vs close. Log a ticket from a market button. Not a paper book. | Elo from `data/raw/` |
+| **Game** | One matchup. Three model prices, then each real meeting in that season. | Elo and unit stats from `data/raw/` |
 | **Predictions** | Current-year schedule W/L takes (NFL + B1G/SEC/ACC/Big 12). Results fill in; picks never auto-flip. | `data/predictions/{season}.json` |
 | **Journal** | What you actually bet in 2026 (Novig today): dollars, parlays, early cash-out, year hit/miss | `data/journal/tickets.jsonl` |
 
@@ -97,7 +98,7 @@ sbm serve                 # 127.0.0.1:8000, no reload
 sbm serve --reload        # pick up Python edits
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Research). **Predictions** is `/predictions`. **Journal** is `/journal`.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Research). **Game** is `/game`. **Predictions** is `/predictions`. **Journal** is `/journal`.
 
 Ingest of a season range **merges** into the existing JSONL: only those seasons are replaced.
 

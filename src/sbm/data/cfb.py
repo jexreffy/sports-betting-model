@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import UTC, datetime
 
 import httpx
 
 from sbm.config import get_settings
+from sbm.journal import slate_bounds
+from sbm.predictions import kickoff_in_chicago
 from sbm.schema import Game, League
 from sbm.teams import normalize_cfb_conference
 
@@ -131,7 +134,48 @@ def games_from_cfbd_payloads(games_payload: list[dict], lines_payload: list[dict
                 ),
             )
         )
-    return out
+    return split_doubled_week_one(out)
+
+
+def _is_opening_kick(local: datetime) -> bool:
+    """Week-0 Saturday and the following week. Later week-1 labels are the postseason."""
+    return local.month < 9 or (local.month == 9 and local.day <= 14)
+
+
+def split_doubled_week_one(games: list[Game]) -> list[Game]:
+    """Move the earlier of two week-1 games to week 0 when they are different weeks.
+
+    CFBD sometimes numbers the week-0 Saturday and the next week both as week 1.
+    Games inside one Tuesday–Monday window stay week 1.
+    """
+    by_team: dict[tuple[int, str], list[Game]] = defaultdict(list)
+    for game in games:
+        if game.league != League.CFB or game.week != 1 or game.kickoff is None:
+            continue
+        for team in (game.home_team, game.away_team):
+            by_team[(game.season, team)].append(game)
+    demote: set[str] = set()
+    for rows in by_team.values():
+        unique = list({game.game_id: game for game in rows}.values())
+        if len(unique) < 2:
+            continue
+        windows: list[tuple[datetime, Game]] = []
+        for game in unique:
+            local = kickoff_in_chicago(game.kickoff, game.league)
+            if local is None or not _is_opening_kick(local):
+                continue
+            windows.append((slate_bounds(local)[0], game))
+        if len(windows) < 2:
+            continue
+        latest = max(start for start, _game in windows)
+        for start, game in windows:
+            if start < latest:
+                demote.add(game.game_id)
+    if not demote:
+        return games
+    return [
+        game.model_copy(update={"week": 0}) if game.game_id in demote else game for game in games
+    ]
 
 
 def download_cfb_advanced(seasons: list[int], api_key: str | None = None) -> list[dict]:

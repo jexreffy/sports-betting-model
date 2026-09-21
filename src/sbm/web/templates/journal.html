@@ -25,7 +25,7 @@
       <div class="stat"><span>Open</span><strong>{{ summary.n_open }}</strong></div>
       <div class="stat"><span>Hit</span><strong>{{ summary.hits }}</strong></div>
       <div class="stat"><span>Miss</span><strong>{{ summary.misses }}</strong></div>
-      <div class="stat"><span>Cashed early</span><strong>{{ summary.cashed_early }}</strong></div>
+      <div class="stat"><span>Chased</span><strong>{{ summary.cashed_early }}</strong></div>
       <div class="stat"><span>Profit $</span><strong>{{ summary.profit_dollars }}</strong></div>
       <div class="stat"><span>ROI</span><strong>{{ summary.roi if summary.roi is not none else "—" }}</strong></div>
     </section>
@@ -45,7 +45,7 @@
             <option value="open">open</option>
             <option value="hit">hit</option>
             <option value="miss">miss</option>
-            <option value="cashed">cashed</option>
+            <option value="chased">chased</option>
           </select>
         </label>
         <label>League
@@ -56,7 +56,12 @@
           </select>
         </label>
         <label>Week
-          <input id="filter-week" type="number" min="1" placeholder="any" />
+          <select id="filter-week">
+            <option value="">any</option>
+            {% for week in slate_weeks %}
+            <option value="{{ week.key }}">{{ week.label }}</option>
+            {% endfor %}
+          </select>
         </label>
       </div>
       {% if tickets %}
@@ -75,20 +80,28 @@
         <tbody>
           {% for t in tickets %}
           {% set leagues = t.legs | map(attribute='league') | list %}
-          {% set weeks = t.legs | map(attribute='week') | list %}
           <tr
             class="journal-row"
             data-status="{{ t.status }}"
             data-league="{{ leagues | join(' ') }}"
-            data-week="{{ weeks | join(' ') }}"
+            data-week="{{ t.slate_key }}"
             data-search="{{ t.sportsbook }} {{ t.notes or '' }} {% for leg in t.legs %}{{ leg.team_or_side }} {{ leg.opponent or '' }} {% endfor %}"
           >
             <td>{{ t.status }}</td>
             <td>{{ t.sportsbook }}</td>
             <td>
               {{ t.kind }}
+              {% if t.slate_label %}<div class="muted">{{ t.slate_label }}</div>{% endif %}
               {% for leg in t.legs %}
-              <div class="muted">{{ leg.team_or_side }}{% if leg.opponent %} vs {{ leg.opponent }}{% endif %}{% if leg.market %} · {{ leg.market }}{% endif %}{% if leg.market_line is not none %} {{ leg.market_line }}{% endif %}</div>
+              {% set label = leg.team_or_side ~ (' vs ' ~ leg.opponent if leg.opponent else '') ~ (' · ' ~ leg.market if leg.market else '') ~ (' ' ~ leg.market_line if leg.market_line is not none else '') %}
+              <div class="leg-line muted"{% if leg.side_color %} style="--team-color: {{ leg.side_color }}"{% endif %}>
+                {% if not t.slate_label and leg.slate_label %}<span class="slate-on-leg">{{ leg.slate_label }}</span>{% endif %}
+                {% if leg.link_game_id %}<a href="{{ leg.link_game_id|game_href }}">{% else %}<span class="leg-text">{% endif %}
+                  {% if leg.side_logo_mark %}<span class="team-mark" aria-hidden="true">{{ leg.side_logo_mark }}</span>{% elif leg.side_logo_url %}<img class="chip-logo" src="{{ leg.side_logo_url }}" alt="" width="18" height="18" />{% elif leg.mate_logo_mark %}<span class="team-mark" aria-hidden="true">{{ leg.mate_logo_mark }}</span>{% elif leg.mate_logo_url %}<img class="chip-logo" src="{{ leg.mate_logo_url }}" alt="" width="18" height="18" />{% endif %}
+                  {{ label }}
+                  {% if leg.opp_logo_mark %}<span class="team-mark" aria-hidden="true">{{ leg.opp_logo_mark }}</span>{% elif leg.opp_logo_url %}<img class="chip-logo" src="{{ leg.opp_logo_url }}" alt="" width="18" height="18" />{% endif %}
+                {% if leg.link_game_id %}</a>{% else %}</span>{% endif %}
+              </div>
               {% endfor %}
               {% if t.notes %}<div class="muted">{{ t.notes }}</div>{% endif %}
             </td>
@@ -139,7 +152,7 @@
         const rowWeek = row.getAttribute("data-week") || "";
         let ok = true;
         if (q && !hay.includes(q)) ok = false;
-        if (st && !(st === "cashed" ? rowStatus.includes("cashed") : rowStatus === st)) ok = false;
+        if (st && rowStatus !== st) ok = false;
         if (lg && !rowLeague.includes(lg)) ok = false;
         if (wk && !rowWeek.split(/\s+/).includes(wk)) ok = false;
         row.hidden = !ok;

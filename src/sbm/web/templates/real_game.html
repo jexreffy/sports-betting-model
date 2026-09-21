@@ -1,0 +1,79 @@
+{% from "_club_name.html" import club_name %}
+<article
+  id="game-{{ meeting.game_id }}"
+  class="real-game game-card{% if meeting.card %} fill-{{ meeting.card.fill }}{% endif %}{% if meeting.opened %} is-opened{% endif %}{% if meeting.card and meeting.card.warning %} has-warning{% endif %}"
+>
+  <header class="game-meta">
+    <span class="league-chip">{{ meeting.card.league|upper if meeting.card else league|upper }}</span>
+    <span>{{ meeting.season }} · Week {{ meeting.week }}</span>
+    {% if meeting.kickoff_label %}<time>{{ meeting.kickoff_label }}</time>{% endif %}
+    {% if meeting.card and meeting.card.is_final %}<span class="final-chip">Final</span>{% endif %}
+    {% if meeting.international %}<span class="info-chip">International</span>{% endif %}
+  </header>
+  <div class="matchup">
+    <div class="team away"{% if meeting.away_color %} style="--team-color: {{ meeting.away_color }}"{% endif %}>
+      <span class="loc">Away</span>
+      <strong><span class="team-identity">{% if meeting.away_logo_mark %}<span class="team-mark team-logo" aria-hidden="true">{{ meeting.away_logo_mark }}</span>{% elif meeting.away_logo_url %}<img class="team-logo" src="{{ meeting.away_logo_url }}" alt="" width="32" height="32" />{% endif %}{{ club_name(meeting.away_place, meeting.away_nickname, meeting.away_name) }}</span></strong>
+      {% if meeting.card and meeting.card.away_score is not none %}<span class="score">{{ meeting.card.away_score }}</span>{% endif %}
+    </div>
+    <div class="at">@</div>
+    <div class="team home"{% if meeting.home_color %} style="--team-color: {{ meeting.home_color }}"{% endif %}>
+      <span class="loc">Home</span>
+      <strong><span class="team-identity">{% if meeting.home_logo_mark %}<span class="team-mark team-logo" aria-hidden="true">{{ meeting.home_logo_mark }}</span>{% elif meeting.home_logo_url %}<img class="team-logo" src="{{ meeting.home_logo_url }}" alt="" width="32" height="32" />{% endif %}{{ club_name(meeting.home_place, meeting.home_nickname, meeting.home_name) }}</span></strong>
+      {% if meeting.card and meeting.card.home_score is not none %}<span class="score">{{ meeting.card.home_score }}</span>{% endif %}
+    </div>
+  </div>
+  <dl class="conditions">
+    <div><dt>When</dt><dd>{{ meeting.kickoff_label or "Not stored" }}</dd></div>
+    <div><dt>Where</dt><dd>{{ meeting.venue }}</dd></div>
+    <div><dt>Site</dt><dd>{{ meeting.site }}</dd></div>
+    <div><dt>Rest</dt><dd>{{ meeting.rest }}</dd></div>
+    <div><dt>International</dt><dd>{{ "Yes" if meeting.international else "No" }}</dd></div>
+  </dl>
+  <h3>Why this number</h3>
+  <ul class="factor-list">
+    {% for row in meeting.factors %}
+    <li><span>{{ row.label }}</span><span>{{ row.points }}</span></li>
+    {% endfor %}
+  </ul>
+  <p class="rank-context">You: {{ meeting.take }}</p>
+  {% if meeting.card and (meeting.card.away_rank or meeting.card.home_rank) %}
+  <p class="rank-context">
+    {% if meeting.card.away_rank %}<span class="rank-bit"{% if meeting.away_color %} style="--team-color: {{ meeting.away_color }}"{% endif %}>{% if meeting.away_logo_mark %}<span class="team-mark" aria-hidden="true">{{ meeting.away_logo_mark }}</span>{% elif meeting.away_logo_url %}<img class="chip-logo" src="{{ meeting.away_logo_url }}" alt="" width="18" height="18" />{% endif %}{{ meeting.card.away_abbrev }} {{ meeting.card.away_rank }}</span>{% endif %}
+    {% if meeting.card.home_rank %}<span class="rank-bit"{% if meeting.home_color %} style="--team-color: {{ meeting.home_color }}"{% endif %}>{% if meeting.home_logo_mark %}<span class="team-mark" aria-hidden="true">{{ meeting.home_logo_mark }}</span>{% elif meeting.home_logo_url %}<img class="chip-logo" src="{{ meeting.home_logo_url }}" alt="" width="18" height="18" />{% endif %}{{ meeting.card.home_abbrev }} {{ meeting.card.home_rank }}</span>{% endif %}
+  </p>
+  {% endif %}
+  {% if meeting.card %}
+  <ul class="markets">
+    {% for m in meeting.card.markets %}
+    <li class="market fill-{{ m.fill }}{% if m.warning %} has-warning{% endif %}">
+      <div class="market-name">{{ m.label }}</div>
+      <div class="market-lines">
+        <span><em>Model</em> {{ m.model or "—" }}</span>
+        <span><em>Market</em> {{ m.market or "—" }}</span>
+      </div>
+      {% if m.open_for_wager %}
+      <div class="mark-row" data-game="{{ meeting.game_id }}">
+        {% for opt in m.wager_options %}
+        <button
+          type="button"
+          class="wager-open"
+          data-game="{{ meeting.game_id }}"
+          data-league="{{ meeting.card.league }}"
+          data-season="{{ meeting.card.season }}"
+          data-week="{{ meeting.card.week }}"
+          data-market="{{ m.name }}"
+          data-side="{{ opt.side }}"
+          data-team="{{ opt.team_or_side }}"
+          data-opponent="{{ opt.opponent }}"
+          data-line="{{ opt.market_line if opt.market_line is not none else '' }}"
+          data-american="{{ opt.american_odds if opt.american_odds is not none else '' }}"
+        >Log {{ opt.label }}</button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</article>

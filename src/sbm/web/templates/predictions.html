@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+  {% from "_club_name.html" import club_name %}
   <header>
     <div class="brand">SBM · NFL + CFB</div>
     <nav class="switcher" aria-label="Book">
@@ -49,7 +50,7 @@
       <h2>Non-conference leftovers</h2>
       <ul class="leftover-list">
         {% for row in leftovers %}
-        <li>w{{ row.week }} {{ row.team }} vs {{ row.opponent }}{% if row.kickoff_label %} · {{ row.kickoff_label }}{% endif %} <span class="muted">{{ row.conference }}</span></li>
+        <li><a href="{{ row.game_id|game_href }}">w{{ row.week }} {{ row.team }} vs {{ row.opponent }}{% if row.kickoff_label %} · {{ row.kickoff_label }}{% endif %}</a> <span class="muted">{{ row.conference }}</span></li>
         {% endfor %}
       </ul>
     </section>
@@ -60,9 +61,11 @@
       <article class="team-card{% if team.reconsider %} reconsider{% endif %}" data-search="{{ team.search_text|e }}"{% if team.color %} style="--team-color: {{ team.color }}"{% endif %}>
         <header>
           {% if team.logo_mark %}<span class="team-mark team-logo" aria-hidden="true">{{ team.logo_mark }}</span>{% elif team.logo_url %}<img class="team-logo" src="{{ team.logo_url }}" alt="" width="32" height="32" />{% endif %}
-          <h2>{{ team.display_name }}</h2>
-          <span class="league-chip">{{ team.conference }}</span>
-          {% if team.reconsider %}<span class="warning-chip">Reconsider</span>{% endif %}
+          <h2>{{ club_name(team.place, team.nickname, team.display_name) }}</h2>
+          <span class="header-chips">
+            <span class="league-chip">{{ team.conference }}</span>
+            {% if team.reconsider %}<span class="warning-chip">Reconsider</span>{% endif %}
+          </span>
         </header>
         <p class="muted">You picked them in {{ team.predicted_wins_played }} of {{ team.n_played }} played · they won {{ team.actual_wins }}</p>
         {% if team.bye_weeks %}<p class="muted">Bye w{{ team.bye_weeks | join(", w") }}</p>{% endif %}
@@ -78,17 +81,19 @@
           {% set intl = " · INTL" if g.international else "" %}
           {% if g.predicted_winner %}
           {% set hit = g.predicted_winner == g.actual_winner %}
-          <span
+          <a
             class="pick-chip {{ 'hit' if hit else 'miss' }}"
+            href="{{ g.game_id|game_href }}"
             title="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}{% if g.venue %} · {{ g.venue }}{% endif %}"
             aria-label="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}, {{ 'right' if hit else 'wrong' }}"
-          >{% if g.opp_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.opp_logo_mark }}</span>{% elif g.opp_logo_url %}<img class="chip-logo" src="{{ g.opp_logo_url }}" alt="" width="18" height="18" />{% endif %}w{{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{% if g.international %} <span class="intl-chip">INTL</span>{% endif %}</span>
+          >{% if g.opp_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.opp_logo_mark }}</span>{% elif g.opp_logo_url %}<img class="chip-logo" src="{{ g.opp_logo_url }}" alt="" width="18" height="18" />{% endif %}w{{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{% if g.international %} <span class="intl-chip">INTL</span>{% endif %}</a>
           {% else %}
-          <span
+          <a
             class="pick-chip ungraded"
+            href="{{ g.game_id|game_href }}"
             title="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}{% if g.venue %} · {{ g.venue }}{% endif %}"
             aria-label="Week {{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{{ intl }}"
-          >{% if g.opp_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.opp_logo_mark }}</span>{% elif g.opp_logo_url %}<img class="chip-logo" src="{{ g.opp_logo_url }}" alt="" width="18" height="18" />{% endif %}w{{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{% if g.international %} <span class="intl-chip">INTL</span>{% endif %}</span>
+          >{% if g.opp_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.opp_logo_mark }}</span>{% elif g.opp_logo_url %}<img class="chip-logo" src="{{ g.opp_logo_url }}" alt="" width="18" height="18" />{% endif %}w{{ g.week }} {{ loc }} {{ g.opp_display }} {{ wl }}{{ when }}{% if g.international %} <span class="intl-chip">INTL</span>{% endif %}</a>
           {% endif %}
           {% endif %}
           {% endfor %}
@@ -99,7 +104,7 @@
           <li class="sched-row bye"><span class="muted">w{{ g.week }} BYE</span></li>
           {% else %}
           <li class="sched-row{% if g.leftover and not g.predicted_winner %} leftover{% endif %}{% if g.international %} international{% endif %}">
-            <span class="muted">w{{ g.week }}{% if g.kickoff_label %} {{ g.kickoff_label }}{% endif %}{% if g.international %} <span class="intl-chip" title="{{ g.venue or 'International' }}">INTL</span>{% endif %}</span>
+            <a class="game-link" href="{{ g.game_id|game_href }}">w{{ g.week }}{% if g.kickoff_label %} {{ g.kickoff_label }}{% endif %}{% if g.international %} <span class="intl-chip" title="{{ g.venue or 'International' }}">INTL</span>{% endif %}</a>
             <span class="pick-buttons">
               <button type="button" class="pick-winner{% if g.selected == 'away' %} selected{% endif %}" data-game="{{ g.game_id }}" data-choice="away" data-winner="{{ g.away_team }}">{% if g.away_logo_mark %}<span class="team-mark" aria-hidden="true">{{ g.away_logo_mark }}</span>{% elif g.away_logo_url %}<img class="chip-logo" src="{{ g.away_logo_url }}" alt="" width="16" height="16" />{% endif %}{{ g.away_label }}</button>
               <button type="button" class="pick-winner cover{% if g.selected == 'cover' %} selected{% endif %}" data-game="{{ g.game_id }}" data-choice="cover"{% if not g.cover_enabled %} disabled{% endif %}>Cover</button>

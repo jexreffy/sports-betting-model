@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -17,6 +18,14 @@ from sbm.schema import League, Leg, Ticket, TicketKind
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
+
+def _game_href(game_id: str) -> str:
+    token = quote(str(game_id), safe="")
+    return f"/game/{token}#game-{token}"
+
+
+templates.env.filters["game_href"] = _game_href
+
 app = FastAPI(title="SBM", description="NFL + CFB research, Predictions, and 2026 Journal")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
@@ -31,6 +40,7 @@ def _mode(value: str) -> Mode:
 def _nav() -> list[dict[str, str]]:
     return [
         {"href": "/research", "label": "Research", "key": "research"},
+        {"href": "/game", "label": "Game", "key": "game"},
         {"href": "/predictions", "label": "Predictions", "key": "predictions"},
         {"href": "/ratings", "label": "Ratings", "key": "ratings"},
         {"href": "/rankings", "label": "Rankings", "key": "rankings"},
@@ -144,8 +154,14 @@ def _board_payload(league: str | None = None) -> dict:
 
 
 def _journal_payload(season: int) -> dict:
+    from sbm.data.store import load_games
+    from sbm.journal import present_ticket_legs
+
     book = Journal()
     stats = book.year(season)
+    games = load_games()
+    tickets = book.rows_for_year(season)
+    slate_weeks = present_ticket_legs(tickets, games)
     return {
         "banner": (
             "Journal — 2026 real tickets (Novig). Logging only; SBM never places a wager. "
@@ -153,7 +169,8 @@ def _journal_payload(season: int) -> dict:
         ),
         "season": season,
         "summary": stats.model_dump(),
-        "tickets": book.rows_for_year(season),
+        "tickets": tickets,
+        "slate_weeks": slate_weeks,
         "nav": _nav(),
         "active": "journal",
     }
@@ -219,9 +236,12 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
         data["logo_url"] = face.logo_url
         data["logo_mark"] = face.logo_mark
         data["display_name"] = face.display_name
+        data["place"] = face.place
+        data["nickname"] = face.nickname
         data["abbrev"] = face.abbrev
         data["color"] = face.color
         data["search_text"] = face.search_text
+        data["games"].sort(key=lambda row: (row["week"], row.get("kickoff") or "", row["game_id"]))
         for row in data["games"]:
             away = row["opponent"] if row["is_home"] else team.team
             home = team.team if row["is_home"] else row["opponent"]
@@ -469,6 +489,8 @@ def _ratings_payload(league: str | None) -> dict:
             rows.append(
                 {
                     "display_name": face.display_name,
+                    "place": face.place,
+                    "nickname": face.nickname,
                     "abbrev": face.abbrev,
                     "logo_url": face.logo_url,
                     "logo_mark": face.logo_mark,
@@ -514,6 +536,8 @@ def _rankings_payload(season: int, group: str) -> dict:
                 "team": team,
                 "rank": index + 1,
                 "display_name": face.display_name,
+                "place": face.place,
+                "nickname": face.nickname,
                 "abbrev": face.abbrev,
                 "logo_url": face.logo_url,
                 "logo_mark": face.logo_mark,
@@ -607,6 +631,61 @@ def api_rankings_place(body: RankingsPlaceRequest) -> JSONResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     save_rankings(book)
     return JSONResponse(book.model_dump(mode="json"))
+
+
+def _game_context(payload: dict) -> dict:
+    return {
+        **payload,
+        "nav": _nav(),
+        "active": "game",
+        "banner": (
+            "Game — pull two teams, or open a meeting from Research, Predictions, or Journal. "
+            "Logging only; SBM never places a wager."
+        ),
+        "season": (
+            payload["meetings"][0]["season"]
+            if payload.get("meetings")
+            else RESEARCH_WINDOWS.hands_off
+        ),
+    }
+
+
+@app.get("/game", response_class=HTMLResponse)
+def game_page(
+    request: Request,
+    league: str = "nfl",
+    team_a: str = "",
+    team_b: str = "",
+) -> HTMLResponse:
+    from sbm.data.store import load_games
+    from sbm.web.game_page import empty_payload, payload_for_pull
+
+    if team_a.strip() or team_b.strip():
+        payload = payload_for_pull(load_games(), league, team_a, team_b)
+    else:
+        payload = empty_payload(league=league)
+    return templates.TemplateResponse(
+        request,
+        "game.html",
+        _game_context(payload),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/game/{game_id:path}", response_class=HTMLResponse)
+def game_by_id(request: Request, game_id: str) -> HTMLResponse:
+    from sbm.data.store import load_games
+    from sbm.web.game_page import payload_for_game
+
+    payload = payload_for_game(load_games(), game_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"Unknown game {game_id}")
+    return templates.TemplateResponse(
+        request,
+        "game.html",
+        _game_context(payload),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/journal", response_class=HTMLResponse)

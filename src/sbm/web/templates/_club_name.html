@@ -1,0 +1,6 @@
+{% macro club_name(place, nickname, label) -%}
+<span class="club-name" aria-label="{{ label }}">
+  <span class="club-place">{{ place }}</span>
+  {% if nickname %}<span class="club-nick">{{ nickname }}</span>{% endif %}
+</span>
+{%- endmacro %}

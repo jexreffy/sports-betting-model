@@ -38,6 +38,23 @@ def test_cfb_display_is_school_and_nickname() -> None:
     assert display_name(League.CFB, "Ohio State") == "Ohio State Buckeyes"
 
 
+def test_rendered_name_splits_place_and_nickname() -> None:
+    carolina = team_face(League.CFB, "South Carolina")
+    assert carolina.place == "South Carolina"
+    assert carolina.nickname == "Gamecocks"
+    assert carolina.display_name == "South Carolina Gamecocks"
+    bay = team_face(League.NFL, "TB")
+    assert bay.place == "Tampa Bay"
+    assert bay.nickname == "Buccaneers"
+    tide = team_face(League.CFB, "Alabama")
+    assert tide.place == "Alabama"
+    assert tide.nickname == "Crimson Tide"
+    ttun = team_face(League.CFB, "Michigan")
+    assert ttun.place == "The Team"
+    assert ttun.nickname == "Up North"
+    assert ttun.display_name == "The Team Up North"
+
+
 def test_michigan_render_is_ttun_only() -> None:
     assert render_display_name(League.CFB, "Michigan") == "The Team Up North"
     assert render_abbrev(League.CFB, "Michigan") == "TTUN"

@@ -120,16 +120,17 @@ def _edge_label(league: League, name: str) -> str:
     return "pass EPA"
 
 
-def home_adjustment(
+def unit_components(
     game: Game, book: UnitBook | None, params: LeagueParams
-) -> tuple[float, str | None]:
-    """Points added to the home margin, and the largest unit edge, if any."""
+) -> tuple[dict[str, float], float, str | None]:
+    """Weighted run, pass, and talent points, the capped sum, and the edge label."""
+    zeros = {"run": 0.0, "pass": 0.0, "talent": 0.0}
     if book is None:
-        return 0.0, None
+        return zeros, 0.0, None
     home = book.profile_before(game.league, game.home_team, game.season, game.week)
     away = book.profile_before(game.league, game.away_team, game.season, game.week)
     if home is None or away is None:
-        return 0.0, None
+        return zeros, 0.0, None
     run = _run_edge(game.league, home, away)
     passing = _pass_edge(game.league, home, away)
     talent = 0.0
@@ -141,16 +142,23 @@ def home_adjustment(
         "talent": params.talent_weight * talent,
     }
     raw = weighted["run"] + weighted["pass"] + weighted["talent"]
-    cap = params.unit_cap
-    capped = max(-cap, min(cap, raw))
+    capped = max(-params.unit_cap, min(params.unit_cap, raw))
     if any(abs(value) > 1e-9 for value in weighted.values()):
         best_name = max(weighted, key=lambda name: abs(weighted[name]))
     else:
         unweighted = {"run": run, "pass": passing}
         best_name = max(unweighted, key=lambda name: abs(unweighted[name]))
         if abs(unweighted[best_name]) < 1e-9:
-            return 0.0, None
-    return capped, _edge_label(game.league, best_name)
+            return weighted, 0.0, None
+    return weighted, capped, _edge_label(game.league, best_name)
+
+
+def home_adjustment(
+    game: Game, book: UnitBook | None, params: LeagueParams
+) -> tuple[float, str | None]:
+    """Points added to the home margin, and the largest unit edge, if any."""
+    _parts, capped, label = unit_components(game, book, params)
+    return capped, label
 
 
 def load_unit_book(path: Path | None = None) -> UnitBook:
