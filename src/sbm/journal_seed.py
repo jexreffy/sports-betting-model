@@ -331,6 +331,8 @@ def novig_2026_tickets() -> list[Ticket]:
             implied=0.495,
             result=None,
             market=Market.MONEYLINE,
+            side=Side.HOME,
+            game_id="cfb-401858469",
             notes="Gut: wrong team is favored",
         ),
         _straight(
@@ -343,6 +345,8 @@ def novig_2026_tickets() -> list[Ticket]:
             implied=0.39,
             result=None,
             market=Market.MONEYLINE,
+            side=Side.AWAY,
+            game_id="cfb-401858463",
             notes="Gut: wrong team is favored",
         ),
         _straight(
@@ -355,6 +359,8 @@ def novig_2026_tickets() -> list[Ticket]:
             implied=0.355,
             result=None,
             market=Market.MONEYLINE,
+            side=Side.AWAY,
+            game_id="cfb-401856698",
             notes="Gut: wrong team is favored",
         ),
         _straight(
@@ -367,7 +373,9 @@ def novig_2026_tickets() -> list[Ticket]:
             implied=0.55,
             result=None,
             market=Market.SPREAD,
+            side=Side.AWAY,
             line=-2.5,
+            game_id="2026_03_CAR_CLE",
         ),
     ]
     return tickets
