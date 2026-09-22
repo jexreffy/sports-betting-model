@@ -248,9 +248,12 @@ def _market_block(
 ) -> dict:
     model_pick = next((p for p in model_picks if p.market.value == name), None)
     flags = honesty_flags(game, model_pick)
-    model_fade = model_pick is not None
+    live_heat = not game.is_final
+    if not live_heat:
+        flags = {key: False for key in flags}
+    model_fade = live_heat and model_pick is not None
     you_fade = False
-    if name != "total" and predicted_winner:
+    if live_heat and name != "total" and predicted_winner:
         fav = market_favorite_team(game)
         you_fade = fav is not None and predicted_winner != fav
     fill = fade_fill(you_fade=you_fade, model_fade=model_fade)
@@ -388,8 +391,13 @@ def _card(
     yours = you_ranks or {}
     away_group = _group_for(game, game.away_team, home=False)
     home_group = _group_for(game, game.home_team, home=True)
-    away_model = ranks.get(away_group, {}).get(game.away_team)
-    home_model = ranks.get(home_group, {}).get(game.home_team)
+    if game.is_final:
+        away_you = away_model = home_you = home_model = None
+    else:
+        away_you = yours.get((away_group, game.away_team))
+        home_you = yours.get((home_group, game.home_team))
+        away_model = ranks.get(away_group, {}).get(game.away_team)
+        home_model = ranks.get(home_group, {}).get(game.home_team)
     return {
         "game_id": game.game_id,
         "league": game.league.value,
@@ -413,8 +421,8 @@ def _card(
         "home_color": home_face.color,
         "kickoff_iso": kickoff_iso(game.kickoff, game.league),
         "model_context": model_context,
-        "away_rank": _rank_text(yours.get((away_group, game.away_team)), away_model),
-        "home_rank": _rank_text(yours.get((home_group, game.home_team)), home_model),
+        "away_rank": _rank_text(away_you, away_model),
+        "home_rank": _rank_text(home_you, home_model),
         "kickoff": game.kickoff.isoformat() if game.kickoff else None,
         "is_final": game.is_final,
         "away_score": game.away_score,

@@ -32,7 +32,7 @@ sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
 
 ## Research colors
 
-The week is ordered by these fills, then by the best expected value on the card. A game with no posted line sits at the bottom. Warning is a red badge/border, not a fill. Fill is disagreement with the market:
+The week is ordered by these fills, then by the best expected value on the card. A game with no posted line sits at the bottom. A game that is already final has no fill, no warning badge, and no You/Model ranks — those marks are for games still open. Warning is a red badge/border, not a fill. Fill is disagreement with the market:
 
 - **Orange** — your predicted winner is not the market favorite
 - **Yellow** — the model has a ticket
