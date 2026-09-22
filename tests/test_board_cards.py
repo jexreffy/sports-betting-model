@@ -204,3 +204,46 @@ def test_both_fade_is_green_with_warning_badge() -> None:
     assert "Both fade" in cards[0]["chips"]
     assert any(c.startswith("Warning") for c in cards[0]["chips"])
     assert fade_fill(you_fade=True, model_fade=True) == "both"
+
+
+def test_final_has_no_heatmap_or_current_ranks() -> None:
+    game = Game(
+        game_id="g-final",
+        league=League.NFL,
+        season=2026,
+        week=3,
+        home_team="NYG",
+        away_team="DAL",
+        home_score=6,
+        away_score=40,
+        spread_close=-3.0,
+        total_close=44.5,
+        home_moneyline=-150,
+        away_moneyline=130,
+        venue="Tottenham Hotspur Stadium",
+    )
+    assert honesty_flags(game, None)["warning"] is True
+    cards, _ = game_cards(
+        [game],
+        Mode.SIMULATION,
+        season=2026,
+        week=3,
+        predicted_winners={"g-final": "DAL"},
+        you_ranks={("nfl", "NYG"): 32, ("nfl", "DAL"): 1},
+    )
+    card = cards[0]
+    assert card["is_final"] is True
+    assert card["fill"] == "none"
+    assert card["warning"] is False
+    assert card["international"] is False
+    assert not any(chip.startswith("Warning") for chip in card["chips"])
+    assert "You fade" not in card["chips"]
+    assert "Model fade" not in card["chips"]
+    assert "Both fade" not in card["chips"]
+    assert card["away_rank"] is None
+    assert card["home_rank"] is None
+    spread = next(m for m in card["markets"] if m["name"] == "spread")
+    assert spread["fill"] == "none"
+    assert spread["you_fade"] is False
+    assert spread["model_fade"] is False
+    assert spread["warning"] is False

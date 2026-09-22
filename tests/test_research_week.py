@@ -116,9 +116,11 @@ def test_undated_final_does_not_move_ranks_on_an_earlier_week() -> None:
     shown_earlier = {card.get("game_id") for card in earlier["cards"]}
     assert "undated" not in shown_earlier
     early_card = next(card for card in earlier["cards"] if card["game_id"] == "early")
+    later_card = next(card for card in current["cards"] if card["game_id"] == "later")
     undated_card = next(card for card in current["cards"] if card["game_id"] == "undated")
     assert early_card["home_rank"] == "Model: 3"
-    assert undated_card["home_rank"] == "Model: 1"
+    assert undated_card["home_rank"] is None
+    assert later_card["away_rank"] == "Model: 4"
 
 
 def test_dropdown_runs_through_the_postseason(
