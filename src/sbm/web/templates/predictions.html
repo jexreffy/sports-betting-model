@@ -56,9 +56,26 @@
     </section>
     {% endif %}
 
+    {% set flagged = teams | selectattr("reconsider") | list %}
+    {% if flagged %}
+    <section class="panel" id="reconsider-panel">
+      <h2>Reconsider</h2>
+      <p class="muted">Your W/L take on these clubs has gone cold. Mark seen after you look again; the flag returns if more graded picks miss.</p>
+      <ul class="reconsider-list">
+        {% for team in flagged %}
+        <li>
+          <a href="#team-{{ team.league }}-{{ team.abbrev }}">{{ club_name(team.place, team.nickname, team.display_name) }}</a>
+          <span class="muted">picked to win {{ team.predicted_wins_played }} of {{ team.n_played }} played</span>
+          <button type="button" class="ack-reconsider" data-team="{{ team.team }}" data-league="{{ team.league }}">I've reconsidered</button>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
     <div class="pred-grid" id="pred-grid">
       {% for team in teams %}
-      <article class="team-card{% if team.reconsider %} reconsider{% endif %}" data-search="{{ team.search_text|e }}"{% if team.color %} style="--team-color: {{ team.color }}"{% endif %}>
+      <article class="team-card{% if team.reconsider %} reconsider{% endif %}" id="team-{{ team.league }}-{{ team.abbrev }}" data-search="{{ team.search_text|e }}"{% if team.color %} style="--team-color: {{ team.color }}"{% endif %}>
         <header>
           {% if team.logo_mark %}<span class="team-mark team-logo" aria-hidden="true">{{ team.logo_mark }}</span>{% elif team.logo_url %}<img class="team-logo" src="{{ team.logo_url }}" alt="" width="32" height="32" />{% endif %}
           <h2>{{ club_name(team.place, team.nickname, team.display_name) }}</h2>
@@ -68,6 +85,9 @@
           </span>
         </header>
         <p class="muted">You picked them in {{ team.predicted_wins_played }} of {{ team.n_played }} played · they won {{ team.actual_wins }}</p>
+        {% if team.reconsider %}
+        <p><button type="button" class="ack-reconsider" data-team="{{ team.team }}" data-league="{{ team.league }}">I've reconsidered</button></p>
+        {% endif %}
         {% if team.bye_weeks %}<p class="muted">Bye w{{ team.bye_weeks | join(", w") }}</p>{% endif %}
         <label class="note-row">Note
           <input class="team-note" data-team="{{ team.team }}" data-league="{{ team.league }}" value="{{ team.note or '' }}" />
@@ -140,6 +160,24 @@
         window.location.reload();
       });
     });
+    document.querySelectorAll(".ack-reconsider").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const resp = await fetch("/api/predictions/reconsider", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            season,
+            team: btn.getAttribute("data-team"),
+            league: btn.getAttribute("data-league"),
+          }),
+        });
+        if (!resp.ok) {
+          window.alert(await resp.text());
+          return;
+        }
+        window.location.reload();
+      });
+    });
     document.querySelectorAll(".team-note").forEach((input) => {
       input.addEventListener("change", async () => {
         const resp = await fetch("/api/predictions/note", {
@@ -159,6 +197,7 @@
     const grid = document.getElementById("pred-grid");
     const empty = document.getElementById("search-empty");
     const leftovers = document.querySelector(".leftover-list")?.closest("section");
+    const reconsider = document.getElementById("reconsider-panel");
     function cardMatches(haystack, query) {
       const q = query.trim().toLowerCase();
       if (!q) return true;
@@ -176,6 +215,7 @@
         if (ok) shown += 1;
       });
       if (leftovers) leftovers.hidden = q.trim() !== "";
+      if (reconsider) reconsider.hidden = q.trim() !== "";
       if (empty) empty.hidden = shown > 0 || q.trim() === "";
     }
     if (search) {

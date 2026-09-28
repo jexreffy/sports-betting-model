@@ -84,6 +84,12 @@ class PredictionsNoteRequest(BaseModel):
     note: str | None = None
 
 
+class PredictionsReconsiderRequest(BaseModel):
+    season: int = RESEARCH_WINDOWS.hands_off
+    team: str
+    league: str
+
+
 def _parse_week(value: str | None) -> date | None:
     if not value:
         return None
@@ -289,6 +295,7 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
                 open_schedule.append({"kind": "game", **row})
         data["open_schedule"] = open_schedule
         views.append(data)
+    views.sort(key=lambda row: (0 if row["reconsider"] else 1))
     leftovers = leftovers_for(book, None if not conference else conference)
     for row in leftovers:
         row["team"] = team_face(League.CFB, row["team"]).display_name
@@ -325,7 +332,8 @@ def _predictions_payload(season: int, conference: str | None = None) -> dict:
     return {
         "banner": (
             "Predictions — current-year W/L takes. Results fill in; picks never auto-flip. "
-            "Reconsider is a warning, not a grade."
+            "Reconsider sits at the top until you mark the take seen; it returns if the "
+            "graded record gets worse."
         ),
         "season": season,
         "conference": conference or "all",
@@ -854,6 +862,19 @@ def api_predictions_note(body: PredictionsNoteRequest) -> JSONResponse:
     book = _ensure_predictions(body.season)
     try:
         updated = set_note(book, body.team, League(body.league), body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    save_book(updated)
+    return JSONResponse(updated.model_dump(mode="json"))
+
+
+@app.post("/api/predictions/reconsider")
+def api_predictions_reconsider(body: PredictionsReconsiderRequest) -> JSONResponse:
+    from sbm.predictions import ack_reconsider, save_book
+
+    book = _ensure_predictions(body.season)
+    try:
+        updated = ack_reconsider(book, body.team, League(body.league))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     save_book(updated)

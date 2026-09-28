@@ -81,7 +81,7 @@ sbm predictions sync
 sbm predictions set --game-id 2026_04_BUF_KC --winner BUF
 ```
 
-Power-rank fill is not a dashboard form. Paste an ordered list in chat; the agent applies it (existing clicks stay). CFB non-conference games stay leftover.
+Power-rank fill is not a dashboard form. Paste an ordered list in chat; the agent applies it (existing clicks stay). CFB non-conference games stay leftover. **Reconsider** pins a team whose W/L take has gone cold (at least three picked wins, hit rate at most 40%). **I've reconsidered** clears it until that graded pick record changes.
 
 ## Journal
 

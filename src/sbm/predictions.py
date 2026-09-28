@@ -21,6 +21,7 @@ from sbm.teams import NFL_CONFERENCE, NFL_DISPLAY, abbrev, cfb_p4_conference, is
 from sbm.units import favorite_side
 
 RECONSIDER_MIN_PICKED = 3
+RECONSIDER_MAX_HIT_RATE = 0.4
 COVER_MOVE_POINTS = 3.0
 
 
@@ -34,7 +35,6 @@ def _book(
         teams=teams,
         audits=book.audits if audits is None else audits,
     )
-RECONSIDER_MAX_HIT_RATE = 0.4
 
 
 CHICAGO = ZoneInfo("America/Chicago")
@@ -243,6 +243,8 @@ def _merge_team(
         league=league,
         conference=conference,
         note=prior.note if prior is not None else None,
+        reconsider_ack_picked=prior.reconsider_ack_picked if prior is not None else None,
+        reconsider_ack_hits=prior.reconsider_ack_hits if prior is not None else None,
         games=merged,
     )
 
@@ -301,13 +303,25 @@ def annotate_heatmap(book: SeasonPredictions) -> SeasonPredictions:
                 if row.actual_winner == team.team:
                     picked_hits += 1
         hit_rate = picked_hits / picked_to_win if picked_to_win else 1.0
-        reconsider = (
+        cold = (
             picked_to_win >= RECONSIDER_MIN_PICKED and hit_rate <= RECONSIDER_MAX_HIT_RATE
         )
+        acked = (
+            team.reconsider_ack_picked == picked_to_win
+            and team.reconsider_ack_hits == picked_hits
+        )
+        ack_picked = team.reconsider_ack_picked
+        ack_hits = team.reconsider_ack_hits
+        if not cold:
+            ack_picked = None
+            ack_hits = None
+            acked = False
         teams.append(
             team.model_copy(
                 update={
-                    "reconsider": reconsider,
+                    "reconsider": cold and not acked,
+                    "reconsider_ack_picked": ack_picked,
+                    "reconsider_ack_hits": ack_hits,
                     "predicted_wins_played": picked_to_win,
                     "actual_wins": actual_wins,
                     "n_played": n_played,
@@ -463,6 +477,46 @@ def set_note(
     if not found:
         raise ValueError(f"Unknown team {team}")
     return _book(book, teams)
+
+
+def _picked_record(team: TeamSeasonTake) -> tuple[int, int]:
+    picked_to_win = 0
+    picked_hits = 0
+    for row in team.games:
+        if not row.actual_winner or row.predicted_winner != team.team:
+            continue
+        picked_to_win += 1
+        if row.actual_winner == team.team:
+            picked_hits += 1
+    return picked_to_win, picked_hits
+
+
+def ack_reconsider(
+    book: SeasonPredictions, team: str, league: League
+) -> SeasonPredictions:
+    """Hide Reconsider until this take's graded pick record changes."""
+    key = team_key(league, team)
+    scored = annotate_heatmap(book)
+    teams: list[TeamSeasonTake] = []
+    found = False
+    for item in scored.teams:
+        if item.league == league and team_key(item.league, item.team) == key:
+            found = True
+            picked, hits = _picked_record(item)
+            teams.append(
+                item.model_copy(
+                    update={
+                        "reconsider": False,
+                        "reconsider_ack_picked": picked,
+                        "reconsider_ack_hits": hits,
+                    }
+                )
+            )
+        else:
+            teams.append(item)
+    if not found:
+        raise ValueError(f"Unknown team {team}")
+    return _book(scored, teams)
 
 
 def set_pick(
