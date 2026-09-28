@@ -256,6 +256,8 @@ class TeamSeasonTake(BaseModel):
     note: str | None = None
     games: list[SeasonGameTake] = Field(default_factory=list)
     reconsider: bool = False
+    reconsider_ack_picked: int | None = None
+    reconsider_ack_hits: int | None = None
     predicted_wins_played: int = 0
     actual_wins: int = 0
     n_played: int = 0

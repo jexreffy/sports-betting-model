@@ -5,6 +5,7 @@ import pytest
 
 from sbm.config import RESEARCH_WINDOWS
 from sbm.predictions import (
+    ack_reconsider,
     apply_called_misses,
     apply_ranks,
     bye_weeks,
@@ -128,6 +129,33 @@ def test_heatmap_reconsider_when_behind_take(
     assert buf.predicted_wins_played == 3
     remaining = next(g for g in buf.games if g.game_id == "w4")
     assert remaining.predicted_winner == "BUF"
+
+
+def test_ack_hides_reconsider_until_the_pick_record_moves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
+    games = [
+        _nfl("w1", 1, "BUF", "KC", home_score=30, away_score=10),
+        _nfl("w2", 2, "BUF", "MIA", home_score=21, away_score=7),
+        _nfl("w3", 3, "NE", "BUF", home_score=27, away_score=13),
+        _nfl("w4", 4, "BUF", "NYJ"),
+    ]
+    book = init_book(games, RESEARCH_WINDOWS.hands_off)
+    for gid in ("w1", "w2", "w3", "w4"):
+        book = set_winner(book, gid, "BUF")
+    book = ack_reconsider(book, "BUF", League.NFL)
+    buf = next(t for t in book.teams if t.team == "BUF")
+    assert buf.reconsider is False
+    assert buf.reconsider_ack_picked == 3
+    assert buf.reconsider_ack_hits == 1
+    still = ack_reconsider(book, "BUF", League.NFL)
+    assert next(t for t in still.teams if t.team == "BUF").reconsider is False
+    final_w4 = games[3].model_copy(update={"home_score": 24, "away_score": 10})
+    graded = sync_actuals(book, [*games[:3], final_w4])
+    buf = next(t for t in graded.teams if t.team == "BUF")
+    assert buf.predicted_wins_played == 4
+    assert buf.reconsider is True
 
 
 def test_notre_dame_is_rostered_with_acc(
