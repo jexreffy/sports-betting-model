@@ -9,7 +9,13 @@ from sbm.errors import WeekErrorReport, bias_by_league, row_from_prediction
 from sbm.journal import format_slate, slate_bounds, slate_for_game, windows_between
 from sbm.mode import Mode
 from sbm.models.engine import ModelEngine
-from sbm.odds import expected_value, home_cover_prob, total_over_prob
+from sbm.odds import (
+    american_to_implied,
+    expected_value,
+    home_cover_prob,
+    remove_vig_two_way,
+    total_over_prob,
+)
 from sbm.picks import picks_from_prediction
 from sbm.postseason import PostseasonSlot, slots_for_season
 from sbm.predictions import CHICAGO, kickoff_in_chicago, kickoff_iso
@@ -86,6 +92,52 @@ def market_favorite_team(game: Game) -> str | None:
             return None
         return game.home_team if game.home_moneyline < game.away_moneyline else game.away_team
     return None
+
+
+def number_fades_market(game: Game, predicted_home_margin: float) -> bool:
+    """True when this home margin would take the points against the posted number."""
+    fav = market_favorite_team(game)
+    if fav is None or game.spread_close is None:
+        return False
+    market_home_margin = -game.spread_close
+    edge_home = predicted_home_margin - market_home_margin
+    if abs(edge_home) < get_settings().spread_edge_points:
+        return False
+    side_team = game.home_team if edge_home > 0 else game.away_team
+    return side_team != fav
+
+
+def you_fade_spread(game: Game, pred: Prediction, predicted_winner: str | None) -> bool:
+    """You vs the market number. No pick is not a fade.
+
+    The model line is your ATS gut only when you and the model have the same
+    favorite. Picking the market favorite against the model is agreeing with
+    the number, not fading it.
+    """
+    fav = market_favorite_team(game)
+    if fav is None or not predicted_winner:
+        return False
+    if predicted_winner != fav:
+        return True
+    model_fav, _laying = favorite_side(
+        pred.predicted_home_margin, game.away_team, game.home_team
+    )
+    if model_fav != predicted_winner:
+        return False
+    return number_fades_market(game, pred.predicted_home_margin)
+
+
+def moneyline_percents(
+    pred: Prediction, game: Game, home_code: str
+) -> tuple[str, str | None]:
+    """Model and no-vig market win% for the home team, same unit."""
+    model = f"{pred.home_win_prob:.0%} {home_code}"
+    if game.home_moneyline is None or game.away_moneyline is None:
+        return model, None
+    raw_home = american_to_implied(game.home_moneyline)
+    raw_away = american_to_implied(game.away_moneyline)
+    fair_home, _fair_away = remove_vig_two_way(raw_home, raw_away)
+    return model, f"{fair_home:.0%} {home_code}"
 
 
 def fade_fill(*, you_fade: bool, model_fade: bool) -> str:
@@ -245,15 +297,23 @@ def _market_block(
     detail: str,
     model_picks: list[Pick],
     predicted_winner: str | None,
+    pred: Prediction,
+    model_home_margin: float,
 ) -> dict:
     model_pick = next((p for p in model_picks if p.market.value == name), None)
     flags = honesty_flags(game, model_pick)
     live_heat = not game.is_final
     if not live_heat:
         flags = {key: False for key in flags}
-    model_fade = live_heat and model_pick is not None
+    if live_heat and name == "spread":
+        # Same number as the Model spread row, not Neutral Elo.
+        model_fade = number_fades_market(game, model_home_margin)
+    else:
+        model_fade = live_heat and model_pick is not None
     you_fade = False
-    if live_heat and name != "total" and predicted_winner:
+    if live_heat and name == "spread":
+        you_fade = you_fade_spread(game, pred, predicted_winner)
+    elif live_heat and name == "moneyline" and predicted_winner:
         fav = market_favorite_team(game)
         you_fade = fav is not None and predicted_winner != fav
     fill = fade_fill(you_fade=you_fade, model_fade=model_fade)
@@ -316,6 +376,11 @@ def _card(
     home_face = team_face(game.league, game.home_team, game.home_conference)
     away_code = away_face.abbrev
     home_code = home_face.abbrev
+    priced_home_margin = pred.predicted_home_margin
+    if engine is None:
+        neutral_home_margin = priced_home_margin
+    else:
+        neutral_home_margin = engine.elo.neutral_home_margin(game)
     market_spread = _favorite_spread(
         None if game.spread_close is None else -game.spread_close,
         game,
@@ -325,11 +390,13 @@ def _card(
             game,
             "spread",
             "Spread",
-            _favorite_spread(pred.predicted_home_margin, game),
+            _favorite_spread(priced_home_margin, game),
             market_spread,
             market_spread or "—",
             model_picks,
             predicted_winner,
+            pred,
+            priced_home_margin,
         ),
         _market_block(
             game,
@@ -340,25 +407,23 @@ def _card(
             f"O/U {game.total_close if game.total_close is not None else '—'}",
             model_picks,
             predicted_winner,
+            pred,
+            priced_home_margin,
         ),
         _market_block(
             game,
             "moneyline",
             "Moneyline",
-            f"{pred.home_win_prob:.0%} {home_code}",
-            (
-                f"{game.home_moneyline:+d}/{game.away_moneyline:+d}"
-                if game.home_moneyline is not None and game.away_moneyline is not None
-                else None
-            ),
+            *moneyline_percents(pred, game, home_code),
             f"{away_code} / {home_code}",
             model_picks,
             predicted_winner,
+            pred,
+            priced_home_margin,
         ),
     ]
-    you_any = any(m["you_fade"] for m in markets)
-    model_any = any(m["model_fade"] for m in markets)
-    card_fill = fade_fill(you_fade=you_any, model_fade=model_any)
+    spread = next(m for m in markets if m["name"] == "spread")
+    card_fill = spread["fill"]
     warning = any(m["warning"] for m in markets)
     chips: list[str] = []
     if warning:
@@ -377,13 +442,11 @@ def _card(
     elif card_fill == "model":
         chips.append("Model fade")
     if engine is None:
-        neutral = pred.predicted_home_margin
         edge = None
     else:
-        neutral = engine.elo.neutral_home_margin(game)
         _points, edge = home_adjustment(game, units, engine.params)
-    full = _favorite_spread(pred.predicted_home_margin, game)
-    neutral_text = _favorite_spread(neutral, game)
+    full = _favorite_spread(priced_home_margin, game)
+    neutral_text = _favorite_spread(neutral_home_margin, game)
     model_context = f"Model {full} · Neutral {neutral_text}"
     if edge:
         model_context = f"{model_context} · {edge}"

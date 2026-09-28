@@ -1,11 +1,14 @@
 from sbm.mode import Mode
-from sbm.schema import Game, League
+from sbm.schema import Game, League, Prediction
 from sbm.web.board import (
     fade_fill,
     game_cards,
     honesty_flags,
     is_international_venue,
     market_favorite_team,
+    moneyline_percents,
+    number_fades_market,
+    you_fade_spread,
 )
 
 
@@ -124,7 +127,7 @@ def test_you_fade_without_model_is_orange() -> None:
         week=3,
         home_team="KC",
         away_team="CLE",
-        spread_close=-3.0,
+        spread_close=-0.5,
         total_close=41.5,
         home_moneyline=-150,
         away_moneyline=130,
@@ -146,7 +149,122 @@ def test_you_fade_without_model_is_orange() -> None:
     assert fade_fill(you_fade=True, model_fade=False) == "you"
 
 
-def test_model_fade_without_you_is_yellow() -> None:
+def test_you_fade_takes_the_points_when_you_still_pick_the_favorite() -> None:
+    game = Game(
+        game_id="iowa-osu",
+        league=League.CFB,
+        season=2026,
+        week=5,
+        home_team="Iowa",
+        away_team="Ohio State",
+        spread_close=13.5,
+        total_close=45.5,
+        home_moneyline=425,
+        away_moneyline=-575,
+        home_conference="Big Ten",
+        away_conference="Big Ten",
+    )
+    pred = Prediction(
+        game_id="iowa-osu",
+        predicted_home_margin=-2.1,
+        predicted_total=46.5,
+        home_win_prob=0.45,
+    )
+    assert market_favorite_team(game) == "Ohio State"
+    assert you_fade_spread(game, pred, "Ohio State") is True
+    assert you_fade_spread(game, pred, None) is False
+    assert number_fades_market(game, -2.1) is True
+    assert number_fades_market(game, -4.8) is True
+    model_ml, market_ml = moneyline_percents(pred, game, "IOW")
+    assert model_ml == "45% IOW"
+    assert market_ml == "18% IOW"
+
+
+def test_priced_favorite_is_not_a_model_fade() -> None:
+    """Neutral can take the dog while the Model row still lays with the market."""
+    game = Game(
+        game_id="uk-sc",
+        league=League.CFB,
+        season=2026,
+        week=5,
+        home_team="South Carolina",
+        away_team="Kentucky",
+        spread_close=-3.0,
+        home_conference="SEC",
+        away_conference="SEC",
+    )
+    pred = Prediction(
+        game_id="uk-sc",
+        predicted_home_margin=6.2,
+        predicted_total=48.0,
+        home_win_prob=0.65,
+    )
+    assert market_favorite_team(game) == "South Carolina"
+    assert you_fade_spread(game, pred, "Kentucky") is True
+    assert number_fades_market(game, 6.2) is False
+    assert number_fades_market(game, -0.5) is True
+    cards, _ = game_cards(
+        [game],
+        Mode.SIMULATION,
+        season=2026,
+        week=5,
+        predicted_winners={"uk-sc": "Kentucky"},
+    )
+    spread = next(m for m in cards[0]["markets"] if m["name"] == "spread")
+    assert spread["you_fade"] is True
+    assert spread["model_fade"] is False
+    assert spread["fill"] == "you"
+    assert cards[0]["fill"] == "you"
+
+
+def test_picking_the_market_favorite_against_the_model_is_not_a_you_fade() -> None:
+    game = Game(
+        game_id="fla-miz",
+        league=League.CFB,
+        season=2026,
+        week=5,
+        home_team="Missouri",
+        away_team="Florida",
+        spread_close=4.5,
+        home_conference="SEC",
+        away_conference="SEC",
+    )
+    pred = Prediction(
+        game_id="fla-miz",
+        predicted_home_margin=6.3,
+        predicted_total=61.5,
+        home_win_prob=0.65,
+    )
+    assert market_favorite_team(game) == "Florida"
+    assert you_fade_spread(game, pred, "Florida") is False
+    assert number_fades_market(game, 6.3) is True
+
+
+def test_same_favorite_inside_a_point_is_not_a_model_fade() -> None:
+    game = Game(
+        game_id="psu-nw",
+        league=League.CFB,
+        season=2026,
+        week=5,
+        home_team="Northwestern",
+        away_team="Penn State",
+        spread_close=2.5,
+        home_conference="Big Ten",
+        away_conference="Big Ten",
+    )
+    pred = Prediction(
+        game_id="psu-nw",
+        predicted_home_margin=-0.7,
+        predicted_total=50.0,
+        home_win_prob=0.48,
+    )
+    assert market_favorite_team(game) == "Penn State"
+    assert you_fade_spread(game, pred, "Northwestern") is True
+    assert number_fades_market(game, -3.4) is False
+    assert number_fades_market(game, -0.7) is True
+
+
+def test_favorite_to_win_still_fades_a_blown_out_number() -> None:
     game = Game(
         game_id="g-yellow",
         league=League.NFL,
@@ -168,10 +286,10 @@ def test_model_fade_without_you_is_yellow() -> None:
     )
     spread = next(m for m in cards[0]["markets"] if m["name"] == "spread")
     assert spread["model_fade"] is True
-    assert spread["you_fade"] is False
-    assert spread["fill"] == "model"
+    assert spread["you_fade"] is True
+    assert spread["fill"] == "both"
     assert spread["warning"] is True
-    assert cards[0]["fill"] in {"model", "both"}
+    assert cards[0]["fill"] == "both"
     assert any(c.startswith("Warning") for c in cards[0]["chips"])
 
 
