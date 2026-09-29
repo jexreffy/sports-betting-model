@@ -1,6 +1,7 @@
 from sbm.mode import Mode
 from sbm.schema import Game, League, Prediction
 from sbm.web.board import (
+    ats_side_vs_market,
     fade_fill,
     game_cards,
     honesty_flags,
@@ -8,6 +9,7 @@ from sbm.web.board import (
     market_favorite_team,
     moneyline_percents,
     number_fades_market,
+    you_ats_side,
     you_fade_spread,
 )
 
@@ -142,8 +144,8 @@ def test_you_fade_without_model_is_orange() -> None:
     )
     spread = next(m for m in cards[0]["markets"] if m["name"] == "spread")
     assert spread["you_fade"] is True
-    assert spread["model_fade"] is False
     assert spread["fill"] == "you"
+    assert cards[0]["fill"] == "you"
     total = next(m for m in cards[0]["markets"] if m["name"] == "total")
     assert total["you_fade"] is False
     assert fade_fill(you_fade=True, model_fade=False) == "you"
@@ -180,8 +182,8 @@ def test_you_fade_takes_the_points_when_you_still_pick_the_favorite() -> None:
     assert market_ml == "18% IOW"
 
 
-def test_priced_favorite_is_not_a_model_fade() -> None:
-    """Neutral can take the dog while the Model row still lays with the market."""
+def test_opposite_ats_sides_stay_you_fade() -> None:
+    """You take the dog; the model lays more. That is not both fade."""
     game = Game(
         game_id="uk-sc",
         league=League.CFB,
@@ -201,8 +203,16 @@ def test_priced_favorite_is_not_a_model_fade() -> None:
     )
     assert market_favorite_team(game) == "South Carolina"
     assert you_fade_spread(game, pred, "Kentucky") is True
-    assert number_fades_market(game, 6.2) is False
+    assert you_ats_side(game, pred, "Kentucky") == "Kentucky"
+    assert ats_side_vs_market(game, 6.2) == "South Carolina"
+    assert number_fades_market(game, 6.2) is True
     assert number_fades_market(game, -0.5) is True
+    assert fade_fill(
+        you_fade=True,
+        model_fade=True,
+        you_side="Kentucky",
+        model_side="South Carolina",
+    ) == "you"
     cards, _ = game_cards(
         [game],
         Mode.SIMULATION,
@@ -212,9 +222,39 @@ def test_priced_favorite_is_not_a_model_fade() -> None:
     )
     spread = next(m for m in cards[0]["markets"] if m["name"] == "spread")
     assert spread["you_fade"] is True
-    assert spread["model_fade"] is False
     assert spread["fill"] == "you"
     assert cards[0]["fill"] == "you"
+
+
+def test_laying_more_with_the_favorite_is_a_shared_fade() -> None:
+    game = Game(
+        game_id="2026_04_LAC_SEA",
+        league=League.NFL,
+        season=2026,
+        week=4,
+        home_team="SEA",
+        away_team="LAC",
+        spread_close=-6.5,
+        home_conference="NFC",
+        away_conference="AFC",
+    )
+    pred = Prediction(
+        game_id="2026_04_LAC_SEA",
+        predicted_home_margin=10.2,
+        predicted_total=44.0,
+        home_win_prob=0.77,
+    )
+    assert market_favorite_team(game) == "SEA"
+    assert you_fade_spread(game, pred, "SEA") is True
+    assert you_ats_side(game, pred, "SEA") == "SEA"
+    assert ats_side_vs_market(game, 10.2) == "SEA"
+    assert you_fade_spread(game, pred, "LAC") is True
+    assert fade_fill(
+        you_fade=True,
+        model_fade=True,
+        you_side="SEA",
+        model_side="SEA",
+    ) == "both"
 
 
 def test_picking_the_market_favorite_against_the_model_is_not_a_you_fade() -> None:
