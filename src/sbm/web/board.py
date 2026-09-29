@@ -94,17 +94,40 @@ def market_favorite_team(game: Game) -> str | None:
     return None
 
 
-def number_fades_market(game: Game, predicted_home_margin: float) -> bool:
-    """True when this home margin would take the points against the posted number."""
-    fav = market_favorite_team(game)
-    if fav is None or game.spread_close is None:
-        return False
+def ats_side_vs_market(game: Game, predicted_home_margin: float) -> str | None:
+    """Team this margin would bet versus the posted number, if the edge clears."""
+    if game.spread_close is None or market_favorite_team(game) is None:
+        return None
     market_home_margin = -game.spread_close
     edge_home = predicted_home_margin - market_home_margin
     if abs(edge_home) < get_settings().spread_edge_points:
-        return False
-    side_team = game.home_team if edge_home > 0 else game.away_team
-    return side_team != fav
+        return None
+    return game.home_team if edge_home > 0 else game.away_team
+
+
+def number_fades_market(game: Game, predicted_home_margin: float) -> bool:
+    """True when this home margin is off the posted number either way."""
+    return ats_side_vs_market(game, predicted_home_margin) is not None
+
+
+def you_ats_side(
+    game: Game, pred: Prediction, predicted_winner: str | None
+) -> str | None:
+    """Your ATS side versus the number.
+
+    No pick, and agreeing with the market favorite against the model, are not fades.
+    """
+    fav = market_favorite_team(game)
+    if fav is None or not predicted_winner:
+        return None
+    if predicted_winner != fav:
+        return predicted_winner
+    model_fav, _laying = favorite_side(
+        pred.predicted_home_margin, game.away_team, game.home_team
+    )
+    if model_fav != predicted_winner:
+        return None
+    return ats_side_vs_market(game, pred.predicted_home_margin)
 
 
 def you_fade_spread(game: Game, pred: Prediction, predicted_winner: str | None) -> bool:
@@ -114,17 +137,7 @@ def you_fade_spread(game: Game, pred: Prediction, predicted_winner: str | None) 
     favorite. Picking the market favorite against the model is agreeing with
     the number, not fading it.
     """
-    fav = market_favorite_team(game)
-    if fav is None or not predicted_winner:
-        return False
-    if predicted_winner != fav:
-        return True
-    model_fav, _laying = favorite_side(
-        pred.predicted_home_margin, game.away_team, game.home_team
-    )
-    if model_fav != predicted_winner:
-        return False
-    return number_fades_market(game, pred.predicted_home_margin)
+    return you_ats_side(game, pred, predicted_winner) is not None
 
 
 def moneyline_percents(
@@ -140,7 +153,15 @@ def moneyline_percents(
     return model, f"{fair_home:.0%} {home_code}"
 
 
-def fade_fill(*, you_fade: bool, model_fade: bool) -> str:
+def fade_fill(
+    *,
+    you_fade: bool,
+    model_fade: bool,
+    you_side: str | None = None,
+    model_side: str | None = None,
+) -> str:
+    if you_side and model_side and you_side != model_side:
+        return "you"
     if you_fade and model_fade:
         return "both"
     if you_fade:
@@ -305,18 +326,25 @@ def _market_block(
     live_heat = not game.is_final
     if not live_heat:
         flags = {key: False for key in flags}
+    you_side = model_side = None
     if live_heat and name == "spread":
         # Same number as the Model spread row, not Neutral Elo.
-        model_fade = number_fades_market(game, model_home_margin)
+        model_side = ats_side_vs_market(game, model_home_margin)
+        model_fade = model_side is not None
+        you_side = you_ats_side(game, pred, predicted_winner)
+        you_fade = you_side is not None
     else:
         model_fade = live_heat and model_pick is not None
-    you_fade = False
-    if live_heat and name == "spread":
-        you_fade = you_fade_spread(game, pred, predicted_winner)
-    elif live_heat and name == "moneyline" and predicted_winner:
-        fav = market_favorite_team(game)
-        you_fade = fav is not None and predicted_winner != fav
-    fill = fade_fill(you_fade=you_fade, model_fade=model_fade)
+        you_fade = False
+        if live_heat and name == "moneyline" and predicted_winner:
+            fav = market_favorite_team(game)
+            you_fade = fav is not None and predicted_winner != fav
+    fill = fade_fill(
+        you_fade=you_fade,
+        model_fade=model_fade,
+        you_side=you_side,
+        model_side=model_side,
+    )
     chips: list[str] = []
     if flags["warning"]:
         bits = []

@@ -34,9 +34,9 @@ sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
 
 The week is ordered by these fills, then by the best expected value on the card. A game with no posted line sits at the bottom. A game that is already final has no fill, no warning badge, and no You/Model ranks — those marks are for games still open. Warning is a red badge/border, not a fill. The card color is the spread versus the market:
 
-- **Orange** — you fade the number (you pick the dog, or you and the model share a favorite and still take the points). No pick is not a fade. Picking the market favorite against the model is not a fade.
-- **Yellow** — the priced Model line fades the number; you do not
-- **Green** — both fade the number
+- **Orange** — you fade the number (you pick the dog, or you and the model share a favorite and the number is off — take the points or lay more). No pick is not a fade. Picking the market favorite against the model is not a fade. Opposite ATS sides stay you-only.
+- **Yellow** — the priced Model line is off the number; you do not
+- **Green** — both fade the same way (both take the points, or both lay more)
 - **Red chip** — noisy `|edge| > 8`, early-season CFB (week < 4), or international NFL
 
 Totals stay model-only on the row. Moneyline is home win% on both sides (model vs no-vig market). Moneyline fade does not recolor the card. Missing predictions are not a fade.
