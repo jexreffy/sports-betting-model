@@ -19,7 +19,7 @@ A local research tool that prices NFL and FBS **spreads, moneylines, and totals*
 ## Weekly playbook
 
 1. `sbm ingest` if the slate looks stale.
-2. Open **Board** (`/` or `/board`). Last week's model miss sits above the cards (this is not your Journal). Pick the week. Green, then yellow, then orange cards come first. Search a team, then open a game to log a real ticket into Journal. Weeks with no closing line still list the games. Championship and playoff weeks show empty slots until the matchups exist.
+2. Open **Board** (`/` or `/board`). Filter NFL, a Power conference, or all CFB. A B1G (etc.) filter includes that team’s non-conference games. Last week's model miss sits above the cards (this is not your Journal). Pick the week. Green, then yellow, then orange cards come first. Search a team, then open a game to log a real ticket into Journal. Weeks with no closing line still list the games. Championship and playoff weeks show empty slots until the matchups exist.
 3. **Predictions** (`/predictions`): click remaining winners. **Rankings** (`/rankings`) is your order; paste a list in chat and the agent can apply it. CFB non-conference leftovers stay flagged for a gut call.
 4. **Records** (`/records`): overall and conference record from finals already ingested. This is not the league’s tiebreaker sheet.
 5. **Journal** (`/journal`): search and filter the book. After games, `sbm journal settle`.

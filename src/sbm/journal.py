@@ -19,7 +19,46 @@ from sbm.schema import (
     Ticket,
     TicketKind,
 )
-from sbm.teams import TeamFace, abbrev, team_face
+from sbm.teams import (
+    CFB_P4_CONFERENCE,
+    P4_CONFERENCES,
+    TeamFace,
+    abbrev,
+    cfb_p4_conference,
+    normalize_cfb_conference,
+    team_face,
+)
+
+
+def scopes_for_leg(leg: Leg, game: Game | None) -> list[str]:
+    """Board-style scopes: NFL/CFB plus any Power 4 team on the game, including non-conference."""
+    scopes: list[str] = []
+
+    def add(item: str) -> None:
+        if item not in scopes:
+            scopes.append(item)
+
+    if game is not None:
+        if game.league == League.NFL:
+            return ["nfl"]
+        add("cfb")
+        for team, stored in (
+            (game.home_team, game.home_conference),
+            (game.away_team, game.away_conference),
+        ):
+            mapped = cfb_p4_conference(team) or normalize_cfb_conference(stored)
+            if mapped in P4_CONFERENCES:
+                add(mapped)
+        return scopes
+    add(leg.league.value)
+    if leg.league == League.CFB:
+        for name in (leg.team_or_side, leg.opponent):
+            if not name:
+                continue
+            mapped = p4_conference_for_token(name)
+            if mapped:
+                add(mapped)
+    return scopes
 
 
 def _status_label(result: str | None) -> str:
@@ -45,6 +84,16 @@ def _token_matches_team(league: League, team: str, token: str) -> bool:
     if code == tok or team.strip().upper() == tok:
         return True
     return len(code) >= 3 and len(tok) >= 3 and (code.startswith(tok) or tok.startswith(code))
+
+
+def p4_conference_for_token(name: str) -> str | None:
+    mapped = cfb_p4_conference(name)
+    if mapped:
+        return mapped
+    for school, conference in CFB_P4_CONFERENCE.items():
+        if _token_matches_team(League.CFB, school, name):
+            return conference
+    return None
 
 
 def _game_has_token(game: Game, token: str) -> bool:
@@ -215,9 +264,13 @@ def present_ticket_legs(tickets: list[dict], games: list[Game]) -> list[dict]:
         linked = link_ticket_legs(legs, games)
         keys: set[str] = set()
         label = None
+        scopes: list[str] = []
         for raw, leg, game_id in zip(ticket["legs"], legs, linked, strict=True):
             raw["link_game_id"] = game_id
             game = by_id.get(game_id) if game_id else None
+            for scope in scopes_for_leg(leg, game):
+                if scope not in scopes:
+                    scopes.append(scope)
             window = slate_for_game(game) if game is not None else None
             if window is None:
                 raw["slate_key"] = None
@@ -231,6 +284,7 @@ def present_ticket_legs(tickets: list[dict], games: list[Game]) -> list[dict]:
             raw.update(leg_club_marks(leg, game))
         ticket["slate_key"] = " ".join(sorted(keys))
         ticket["slate_label"] = label if len(keys) == 1 else None
+        ticket["filter_scopes"] = "|".join(scopes)
     return [{"key": key, "label": windows[key]} for key in sorted(windows)]
 
 

@@ -41,23 +41,24 @@
         </label>
         <label>Status
           <select id="filter-status">
-            <option value="">all</option>
-            <option value="open">open</option>
-            <option value="hit">hit</option>
-            <option value="miss">miss</option>
-            <option value="chased">chased</option>
+            <option value="">All</option>
+            <option value="open">Open</option>
+            <option value="hit">Hit</option>
+            <option value="miss">Miss</option>
+            <option value="chased">Chased</option>
           </select>
         </label>
         <label>League
           <select id="filter-league">
-            <option value="">all</option>
-            <option value="nfl">nfl</option>
-            <option value="cfb">cfb</option>
+            <option value="">All</option>
+            {% for item in scopes %}
+            <option value="{{ item }}">{{ item|scope_label }}</option>
+            {% endfor %}
           </select>
         </label>
         <label>Week
           <select id="filter-week">
-            <option value="">any</option>
+            <option value="">Any</option>
             {% for week in slate_weeks %}
             <option value="{{ week.key }}">{{ week.label }}</option>
             {% endfor %}
@@ -79,21 +80,20 @@
         </thead>
         <tbody>
           {% for t in tickets %}
-          {% set leagues = t.legs | map(attribute='league') | list %}
           <tr
             class="journal-row"
             data-status="{{ t.status }}"
-            data-league="{{ leagues | join(' ') }}"
+            data-scopes="{{ t.filter_scopes }}"
             data-week="{{ t.slate_key }}"
             data-search="{{ t.sportsbook }} {{ t.notes or '' }} {% for leg in t.legs %}{{ leg.team_or_side }} {{ leg.opponent or '' }} {% endfor %}"
           >
-            <td>{{ t.status }}</td>
+            <td>{{ t.status|scope_label }}</td>
             <td>{{ t.sportsbook }}</td>
             <td>
-              {{ t.kind }}
+              {{ t.kind|scope_label }}
               {% if t.slate_label %}<div class="muted">{{ t.slate_label }}</div>{% endif %}
               {% for leg in t.legs %}
-              {% set label = leg.team_or_side ~ (' vs ' ~ leg.opponent if leg.opponent else '') ~ (' · ' ~ leg.market if leg.market else '') ~ (' ' ~ leg.market_line if leg.market_line is not none else '') %}
+              {% set label = (leg.team_or_side|scope_label) ~ (' vs ' ~ (leg.opponent|scope_label) if leg.opponent else '') ~ (' · ' ~ (leg.market|scope_label) if leg.market else '') ~ (' ' ~ leg.market_line if leg.market_line is not none else '') %}
               <div class="leg-line muted"{% if leg.side_color %} style="--team-color: {{ leg.side_color }}"{% endif %}>
                 {% if not t.slate_label and leg.slate_label %}<span class="slate-on-leg">{{ leg.slate_label }}</span>{% endif %}
                 {% if leg.link_game_id %}<a href="{{ leg.link_game_id|game_href }}">{% else %}<span class="leg-text">{% endif %}
@@ -148,12 +148,12 @@
       document.querySelectorAll(".journal-row").forEach((row) => {
         const hay = (row.getAttribute("data-search") || "").toLowerCase();
         const rowStatus = (row.getAttribute("data-status") || "").toLowerCase();
-        const rowLeague = (row.getAttribute("data-league") || "").toLowerCase();
+        const rowScopes = (row.getAttribute("data-scopes") || "").split("|").map((s) => s.toLowerCase());
         const rowWeek = row.getAttribute("data-week") || "";
         let ok = true;
         if (q && !hay.includes(q)) ok = false;
         if (st && rowStatus !== st) ok = false;
-        if (lg && !rowLeague.includes(lg)) ok = false;
+        if (lg && !rowScopes.includes(lg)) ok = false;
         if (wk && !rowWeek.split(/\s+/).includes(wk)) ok = false;
         row.hidden = !ok;
         if (ok) shown += 1;
