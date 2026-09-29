@@ -30,15 +30,49 @@
         </select>
       </label>
       League:
-      <a class="{{ 'is-current' if league == 'all' else '' }}" href="/research?league=all&week={{ week }}">all</a>
-      <a class="{{ 'is-current' if league == 'nfl' else '' }}" href="/research?league=nfl&week={{ week }}">nfl</a>
-      <a class="{{ 'is-current' if league == 'cfb' else '' }}" href="/research?league=cfb&week={{ week }}">cfb</a>
+      <a class="{{ 'is-current' if league == 'all' else '' }}" href="/board?league=all&week={{ week }}">all</a>
+      <a class="{{ 'is-current' if league == 'nfl' else '' }}" href="/board?league=nfl&week={{ week }}">nfl</a>
+      <a class="{{ 'is-current' if league == 'cfb' else '' }}" href="/board?league=cfb&week={{ week }}">cfb</a>
       <label class="team-search">
         <span class="visually-hidden">Search teams</span>
         <input id="team-search" type="search" placeholder="Find a team (Steelers, Pitt, Michigan…)" autocomplete="off" />
       </label>
     </div>
+    <ul class="color-legend" aria-label="Board colors">
+      <li><span class="swatch fill-you"></span> Orange — you fade the number</li>
+      <li><span class="swatch fill-model"></span> Yellow — the model fades; you do not</li>
+      <li><span class="swatch fill-both"></span> Green — both fade the same way</li>
+      <li><span class="swatch warning-chip"></span> Red chip — noisy edge, early CFB, or international NFL</li>
+    </ul>
     <div class="grid">
+      {% if errors %}
+      <section class="panel error-panel">
+        <h2>{{ errors.title }}{% if errors.slate_label %} <span class="slate-label">{{ errors.slate_label }}</span>{% endif %}</h2>
+        <p class="error-caption">{{ errors.caption }}</p>
+        {% if errors.by_league %}
+        {% for row in errors.by_league %}
+        <div class="error-league">
+          {% for line in row.sentences %}
+          <p>{{ line }}</p>
+          {% endfor %}
+          <p class="error-stats">
+            n={{ row.n }}
+            · margin vs close {{ "%+.1f"|format(row.mean_margin_vs_close) if row.mean_margin_vs_close is not none else "—" }}
+            / MAE {{ "%.1f"|format(row.mae_margin_vs_close) if row.mae_margin_vs_close is not none else "—" }}
+            · margin vs final {{ "%+.1f"|format(row.mean_margin_vs_final) if row.mean_margin_vs_final is not none else "—" }}
+            / MAE {{ "%.1f"|format(row.mae_margin_vs_final) if row.mae_margin_vs_final is not none else "—" }}
+            · total vs close {{ "%+.1f"|format(row.mean_total_vs_close) if row.mean_total_vs_close is not none else "—" }}
+            / MAE {{ "%.1f"|format(row.mae_total_vs_close) if row.mae_total_vs_close is not none else "—" }}
+            · total vs final {{ "%+.1f"|format(row.mean_total_vs_final) if row.mean_total_vs_final is not none else "—" }}
+            / MAE {{ "%.1f"|format(row.mae_total_vs_final) if row.mae_total_vs_final is not none else "—" }}
+          </p>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="empty">No finished week to score yet.</p>
+        {% endif %}
+      </section>
+      {% endif %}
       <section class="panel board-panel">
         <h2>This week’s board <span class="slate-label">{{ slate_label }}</span></h2>
         {% if cards %}
@@ -107,32 +141,6 @@
         <p class="empty">No games on this week’s slate.</p>
         {% endif %}
       </section>
-      {% if errors %}
-      <section class="panel error-panel">
-        <h2>Week errors {{ slate_label }}</h2>
-        {% if errors.by_league %}
-        <table>
-          <thead>
-            <tr><th>League</th><th>n</th><th>Margin vs close</th><th>Margin vs final</th><th>Total vs close</th><th>Total vs final</th></tr>
-          </thead>
-          <tbody>
-            {% for row in errors.by_league %}
-            <tr>
-              <td>{{ row.league }}</td>
-              <td>{{ row.n }}</td>
-              <td>{{ row.mean_margin_vs_close if row.mean_margin_vs_close is not none else "—" }}</td>
-              <td>{{ row.mean_margin_vs_final if row.mean_margin_vs_final is not none else "—" }}</td>
-              <td>{{ row.mean_total_vs_close if row.mean_total_vs_close is not none else "—" }}</td>
-              <td>{{ row.mean_total_vs_final if row.mean_total_vs_final is not none else "—" }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <p class="empty">No errors for this slate yet.</p>
-        {% endif %}
-      </section>
-      {% endif %}
     </div>
   </main>
   <script src="/static/local-time.js"></script>

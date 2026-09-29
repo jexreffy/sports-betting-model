@@ -50,6 +50,7 @@ class MeetingPrice:
     game: Game
     factors: list[Factor]
     margin: float
+    predicted_total: float
 
 
 @dataclass(frozen=True)
@@ -221,6 +222,7 @@ def price_matchup(
                 game=game,
                 factors=margin_factors(engine, game),
                 margin=pred.predicted_home_margin,
+                predicted_total=pred.predicted_total,
             )
         )
     return MatchupView(

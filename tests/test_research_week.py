@@ -123,12 +123,41 @@ def test_undated_final_does_not_move_ranks_on_an_earlier_week() -> None:
     assert later_card["away_rank"] == "Model: 4"
 
 
+def test_current_week_errors_use_last_week_finals() -> None:
+    last = datetime(2026, 9, 13, 17, 0, tzinfo=UTC)
+    now = datetime(2026, 9, 20, 17, 0, tzinfo=UTC)
+    games = [
+        _nfl(
+            "done",
+            last,
+            home_score=24,
+            away_score=17,
+            spread_close=-3.0,
+            total_close=45.0,
+        ),
+        _nfl("open", now, spread_close=-3.0),
+    ]
+    current = research_board(
+        games, season=2026, week=date(2026, 9, 15), today=date(2026, 9, 21)
+    )
+    assert current["errors"]["title"] == "Last week"
+    assert current["errors"]["n_games"] == 1
+    assert current["errors"]["by_league"][0]["mae_margin_vs_close"] is not None
+    assert current["errors"]["by_league"][0]["sentences"]
+    assert "spread" in current["errors"]["by_league"][0]["sentences"][0]
+    review = research_board(
+        games, season=2026, week=date(2026, 9, 8), today=date(2026, 9, 21)
+    )
+    assert review["errors"]["title"] == "This slate"
+    assert review["errors"]["n_games"] == 1
+
+
 def test_dropdown_runs_through_the_postseason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
     client = TestClient(app)
-    titles = client.get("/research", params={"week": "2026-12-01", "league": "cfb"})
+    titles = client.get("/board", params={"week": "2026-12-01", "league": "cfb"})
     assert titles.status_code == 200
     assert "Big 12 Championship" in titles.text
     assert "AT&amp;T Stadium" in titles.text
@@ -136,7 +165,7 @@ def test_dropdown_runs_through_the_postseason(
     assert "Matchup not set" in titles.text
     assert "wager-open" not in titles.text
     assert 'href="/game/' not in titles.text
-    quarters = client.get("/research", params={"week": "2026-12-29", "league": "cfb"})
+    quarters = client.get("/board", params={"week": "2026-12-29", "league": "cfb"})
     assert 'datetime="2027-01-01T17:00:00+00:00"' in quarters.text
     assert 'datetime="2027-01-01T21:00:00+00:00"' in quarters.text
     assert 'datetime="2027-01-02T01:00:00+00:00"' in quarters.text
@@ -145,11 +174,11 @@ def test_dropdown_runs_through_the_postseason(
     assert "Cotton" not in quarters.text
     assert "Rose" not in quarters.text
     assert "Peach" not in quarters.text
-    bowl = client.get("/research", params={"week": "2027-02-09", "league": "nfl"})
+    bowl = client.get("/board", params={"week": "2027-02-09", "league": "nfl"})
     assert "Super Bowl LXI" in bowl.text
     assert "SoFi Stadium" in bowl.text
     assert "Sun Feb 14" in bowl.text
-    wild = client.get("/research", params={"week": "2027-01-12", "league": "nfl"})
+    wild = client.get("/board", params={"week": "2027-01-12", "league": "nfl"})
     assert wild.text.count('class="game-card scan-slot"') == 6
     assert "Jan 16–18" in wild.text
     body = client.get("/api/board").json()

@@ -16,14 +16,23 @@ def test_board_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SBM_DATA_DIR", str(tmp_path))
     home = client.get("/", follow_redirects=False)
     assert home.status_code == 307
-    assert home.headers["location"] == "/research"
+    assert home.headers["location"] == "/board"
+    moved = client.get(
+        "/research", params={"week": "2026-12-01", "league": "cfb"}, follow_redirects=False
+    )
+    assert moved.status_code == 307
+    assert moved.headers["location"].startswith("/board")
+    assert "week=2026-12-01" in moved.headers["location"]
+    assert "league=cfb" in moved.headers["location"]
     journal = client.get("/journal")
     assert journal.status_code == 200
     assert b"Journal" in journal.content
     assert b"journal-search" in journal.content
-    research = client.get("/research")
+    research = client.get("/board")
     assert research.status_code == 200
-    assert b"Research" in research.content
+    assert b"Board" in research.content
+    assert b"you fade the number" in research.content
+    assert b"not your tickets" in research.content
     assert b"Ratings" in research.content
     assert b"Rankings" in research.content
     assert b"week-select" in research.content
@@ -35,6 +44,7 @@ def test_board_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert api.status_code == 200
     assert api.headers.get("cache-control") == "no-store"
     body = api.json()
+    assert {"title", "caption", "by_league", "n_games"} <= set(body["errors"])
     assert body["mode"] == "simulation"
     assert "look_only" not in body
     assert "book" not in body
@@ -46,7 +56,7 @@ def test_board_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     year = client.get("/api/journal")
     assert year.status_code == 200
     assert year.json()["summary"]["n_tickets"] == 0
-    quiet = client.get("/research", params={"week": "2026-12-08"})
+    quiet = client.get("/board", params={"week": "2026-12-08"})
     assert b"ingested" in quiet.content
     pred = client.get("/predictions")
     assert pred.status_code == 200
@@ -112,7 +122,7 @@ def test_mark_is_gone_and_does_not_write_paper(
     from sbm.mode import Mode
 
     assert not ledger_path(Mode.SIMULATION).exists()
-    page = client.get("/research")
+    page = client.get("/board")
     assert b"wager-open" not in page.content
     assert b"scan-card" in page.content
     journal = client.post(
@@ -312,7 +322,7 @@ def test_ratings_and_rankings_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert moved.status_code == 200, moved.text
     again = client.get("/rankings?group=nfl")
     assert "follows the model" not in again.text
-    research = client.get("/research")
+    research = client.get("/board")
     assert "You:" in research.text
     assert "<em>Model</em>" in research.text
     ranking_html = client.get("/rankings").text
@@ -544,7 +554,9 @@ def test_game_page_shows_each_same_season_meeting(
     assert "International" in html
     assert 'class="real-game game-card' in html
     assert "is-opened" in html
-    research = client.get("/research")
+    assert "The ingested close was" in html
+    assert "Away won by" in html
+    research = client.get("/board")
     assert "/game/w14#game-w14" in research.text
     predictions = client.get("/predictions")
     assert "/game/w1#game-w1" in predictions.text

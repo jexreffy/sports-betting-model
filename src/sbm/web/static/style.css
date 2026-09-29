@@ -45,7 +45,7 @@ header {
   border-radius: 999px;
   color: var(--muted);
 }
-.switcher a.active-simulation, .switcher a.active-research { background: #16351f; color: var(--sim); border-color: var(--sim); }
+.switcher a.active-simulation, .switcher a.active-research, .switcher a.active-board { background: #16351f; color: var(--sim); border-color: var(--sim); }
 .switcher a.active-live, .switcher a.active-journal { background: #0d2137; color: var(--journal); border-color: var(--journal); }
 .switcher a.active-predictions { background: #2a1f3d; color: var(--predictions); border-color: var(--predictions); }
 .switcher a.active-ratings { background: #1c2a3a; color: var(--accent); border-color: var(--accent); }
@@ -70,6 +70,34 @@ main { padding: 1.25rem 1.5rem 3rem; max-width: 1200px; margin: 0 auto; }
 .stat span { display: block; color: var(--muted); font-size: 0.75rem; }
 .stat strong { font-size: 1.25rem; }
 .grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.25rem; }
+.color-legend {
+  list-style: none;
+  margin: 0 0 0.25rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.color-legend .swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: -0.05rem;
+  border: 1px solid var(--border);
+}
+.color-legend .swatch.fill-you { background: var(--you); border-color: var(--you); }
+.color-legend .swatch.fill-model { background: var(--model-fade); border-color: var(--model-fade); }
+.color-legend .swatch.fill-both { background: var(--both); border-color: var(--both); }
+.color-legend .swatch.warning-chip { background: var(--bad); border-color: var(--bad); }
+.error-caption, .error-stats { color: var(--muted); font-size: 0.8rem; }
+.error-league p { margin: 0.35rem 0; }
+.error-league .error-stats { margin-top: 0.45rem; }
+.game-miss { margin-top: 0.75rem; color: var(--muted); font-size: 0.85rem; }
+.game-miss p { margin: 0.3rem 0; }
 @media (min-width: 960px) {
   .error-panel { grid-column: 1 / -1; }
 }

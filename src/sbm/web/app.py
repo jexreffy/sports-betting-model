@@ -39,7 +39,7 @@ def _mode(value: str) -> Mode:
 
 def _nav() -> list[dict[str, str]]:
     return [
-        {"href": "/research", "label": "Research", "key": "research"},
+        {"href": "/board", "label": "Board", "key": "board"},
         {"href": "/game", "label": "Game", "key": "game"},
         {"href": "/predictions", "label": "Predictions", "key": "predictions"},
         {"href": "/ratings", "label": "Ratings", "key": "ratings"},
@@ -129,17 +129,17 @@ def _board_payload(league: str | None = None, week: str | None = None) -> dict:
     return {
         "mode": Mode.SIMULATION.value,
         "banner": (
-            "Research — one week at a time, model vs market. Open a game to log a ticket. "
+            "Board — this week, model versus the ingested line. Open a game to log a ticket. "
             "This does not train Elo."
         ),
         "slate_label": board["slate_label"],
         "weeks": board["weeks"],
         "week": board["week"],
         "cards": board["cards"],
-        "errors": board["errors"].model_dump(mode="json"),
+        "errors": board["errors"],
         "has_games": any(game.season == season for game in catalog),
         "nav": _nav(),
-        "active": "research",
+        "active": "board",
         "season": season,
     }
 
@@ -373,11 +373,18 @@ def _ticket_from_request(body: JournalAddRequest) -> Ticket:
 
 @app.get("/", response_class=RedirectResponse)
 def index() -> RedirectResponse:
-    return RedirectResponse("/research", status_code=307)
+    return RedirectResponse("/board", status_code=307)
 
 
-@app.get("/research", response_class=HTMLResponse)
-def research(
+@app.get("/research", response_class=RedirectResponse)
+def research_redirect(request: Request) -> RedirectResponse:
+    query = request.url.query
+    target = "/board" + (f"?{query}" if query else "")
+    return RedirectResponse(target, status_code=307)
+
+
+@app.get("/board", response_class=HTMLResponse)
+def board_page(
     request: Request, league: str | None = None, week: str | None = None
 ) -> HTMLResponse:
     payload = _board_payload(league, week)
@@ -542,7 +549,7 @@ def _rankings_payload(season: int, group: str) -> dict:
         )
     return {
         "banner": (
-            "Rankings — your order. Research shows it beside the model and does not recolor cards."
+            "Rankings — your order. Board shows it beside the model and does not recolor cards."
         ),
         "season": season,
         "group": chosen,
@@ -690,7 +697,7 @@ def _game_context(payload: dict) -> dict:
         "nav": _nav(),
         "active": "game",
         "banner": (
-            "Game — pull two teams, or open a meeting from Research, Predictions, or Journal. "
+            "Game — pull two teams, or open a meeting from Board, Predictions, or Journal. "
             "Logging only; SBM never places a wager."
         ),
         "season": (

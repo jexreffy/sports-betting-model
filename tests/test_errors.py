@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from sbm.errors import row_from_prediction, week_error_report
+from sbm.errors import (
+    LeagueBias,
+    bias_by_league,
+    explain_game_row,
+    explain_league_bias,
+    row_from_prediction,
+    week_error_report,
+)
 from sbm.mode import Mode
 from sbm.schema import Game, League, Prediction
 from sbm.units import UnitBook, UnitWeek
@@ -32,6 +39,50 @@ def test_signed_errors_vs_close_and_final() -> None:
     assert row.margin_vs_final == 0.0
     assert row.total_vs_close == -4.0
     assert row.total_vs_final == -6.0
+    lines = explain_game_row(row)
+    assert lines[0] == (
+        "Model had the home team 7 points better. "
+        "The ingested close was the home team 3 points better. "
+        "Home won by 7."
+    )
+    assert lines[1] == "Model total 41. The ingested close was 45. They scored 47."
+    bias = bias_by_league([row])[0]
+    assert bias.mean_margin_vs_close == 4.0
+    assert bias.mae_margin_vs_close == 4.0
+    nfl = explain_league_bias(bias)
+    assert nfl[0].startswith("On 1 NFL game, the model was off the close for the spread")
+    assert "typical miss 4" in nfl[0]
+
+
+def test_league_bias_reads_as_reliable_nfl_or_early_cfb() -> None:
+    nfl = explain_league_bias(
+        LeagueBias(
+            league=League.NFL,
+            n=16,
+            mean_margin_vs_close=0.3,
+            mae_margin_vs_close=1.6,
+            mae_margin_vs_final=12.3,
+            mae_total_vs_close=3.1,
+        )
+    )
+    assert "sat on the close" in nfl[0]
+    assert any("reliable slate" in line for line in nfl)
+    assert any("ordinary football" in line for line in nfl)
+    cfb = explain_league_bias(
+        LeagueBias(
+            league=League.CFB,
+            n=71,
+            mean_margin_vs_close=-6.4,
+            mae_margin_vs_close=11.7,
+            mae_margin_vs_final=17.4,
+            mae_total_vs_close=3.8,
+        ),
+        early_season=True,
+        prior=LeagueBias(league=League.CFB, n=75, mae_margin_vs_close=15.7),
+    )
+    assert "wild versus the close" in cfb[0]
+    assert any("weeks 1–3" in line for line in cfb)
+    assert any("shrank" in line for line in cfb)
 
 
 def test_week_error_report_uses_the_unit_book() -> None:
