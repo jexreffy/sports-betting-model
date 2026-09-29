@@ -20,7 +20,13 @@ from sbm.picks import picks_from_prediction
 from sbm.postseason import PostseasonSlot, slots_for_season
 from sbm.predictions import CHICAGO, kickoff_in_chicago, kickoff_iso
 from sbm.schema import Game, League, Pick, Prediction
-from sbm.teams import abbrev_side, cfb_p4_conference, team_face
+from sbm.teams import (
+    P4_CONFERENCES,
+    abbrev_side,
+    cfb_p4_conference,
+    normalize_cfb_conference,
+    team_face,
+)
 from sbm.units import UnitBook, favorite_side, home_adjustment
 
 INTERNATIONAL_VENUE_MARKERS = (
@@ -49,6 +55,80 @@ INTERNATIONAL_VENUE_MARKERS = (
     "bernabéu",
     "banorte",
 )
+
+BOARD_SCOPES = ("all", "nfl", "B1G", "SEC", "ACC", "Big 12", "cfb")
+_SCOPE_LABELS = {
+    "all": "All",
+    "nfl": "NFL",
+    "cfb": "CFB",
+    "open": "Open",
+    "hit": "Hit",
+    "miss": "Miss",
+    "chased": "Chased",
+    "straight": "Straight",
+    "parlay": "Parlay",
+    "moneyline": "Moneyline",
+    "spread": "Spread",
+    "total": "Total",
+    "away": "Away",
+    "home": "Home",
+    "over": "Over",
+    "under": "Under",
+}
+
+
+def scope_label(value: object | None) -> str:
+    if value is None:
+        return ""
+    token = getattr(value, "value", value)
+    return _SCOPE_LABELS.get(str(token), str(token))
+
+
+_SLOT_CONFERENCE = {
+    "b1g-title": "B1G",
+    "sec-title": "SEC",
+    "acc-title": "ACC",
+    "big12-title": "Big 12",
+}
+
+
+def parse_board_scope(value: str | None) -> str:
+    if value is None or value.strip() == "" or value.strip().lower() == "all":
+        return "all"
+    lowered = value.strip().lower()
+    if lowered == "nfl":
+        return "nfl"
+    if lowered == "cfb":
+        return "cfb"
+    mapped = normalize_cfb_conference(value)
+    if mapped in P4_CONFERENCES:
+        return mapped
+    return "all"
+
+
+def game_in_scope(game: Game, scope: str) -> bool:
+    """P4 filters any game with a team from that conference, including non-conference."""
+    if scope == "all":
+        return True
+    if scope == "nfl":
+        return game.league == League.NFL
+    if scope == "cfb":
+        return game.league == League.CFB
+    if game.league != League.CFB:
+        return False
+    home = cfb_p4_conference(game.home_team) or game.home_conference
+    away = cfb_p4_conference(game.away_team) or game.away_conference
+    return home == scope or away == scope
+
+
+def slot_in_scope(slot: PostseasonSlot, scope: str) -> bool:
+    if scope == "all":
+        return True
+    if scope == "nfl":
+        return slot.league == League.NFL
+    if scope == "cfb":
+        return slot.league == League.CFB
+    return _SLOT_CONFERENCE.get(slot.slot_id) == scope
 
 
 def is_international_venue(venue: str | None) -> bool:
@@ -654,7 +734,7 @@ def _final_rows_for_window(
     preds: dict[str, Prediction],
     *,
     season: int,
-    league: League | None,
+    scope: str,
     window_start: date,
     default_start: date,
 ) -> list:
@@ -662,7 +742,7 @@ def _final_rows_for_window(
     for game in games:
         if game.season != season or not game.is_final:
             continue
-        if league is not None and game.league != league:
+        if not game_in_scope(game, scope):
             continue
         slate = slate_for_game(game)
         if slate is None:
@@ -682,7 +762,7 @@ def _error_view(
     preds: dict[str, Prediction],
     *,
     season: int,
-    league: League | None,
+    scope: str,
     windows: list[tuple[date, date]],
     selected_start: date,
     default_start: date,
@@ -709,7 +789,7 @@ def _error_view(
         games,
         preds,
         season=season,
-        league=league,
+        scope=scope,
         window_start=scored[0],
         default_start=default_start,
     )
@@ -719,7 +799,7 @@ def _error_view(
             games,
             preds,
             season=season,
-            league=league,
+            scope=scope,
             window_start=prior[0],
             default_start=default_start,
         )
@@ -740,6 +820,7 @@ def research_board(
     *,
     season: int,
     league: League | None = None,
+    scope: str | None = None,
     week: date | None = None,
     predicted_winners: dict[str, str] | None = None,
     units: UnitBook | None = None,
@@ -747,6 +828,9 @@ def research_board(
     today: date | None = None,
 ) -> dict:
     """One Tuesday–Monday window, priced from games that are already final."""
+    resolved = parse_board_scope(scope) if scope is not None else (
+        league.value if league is not None else "all"
+    )
     windows = season_windows(games, season)
     current = today or datetime.now(CHICAGO).date()
     selected = _window_for(windows, current)
@@ -767,7 +851,7 @@ def research_board(
     for game in games:
         if game.season != season:
             continue
-        if league is not None and game.league != league:
+        if not game_in_scope(game, resolved):
             continue
         slate = slate_for_game(game)
         if slate is None:
@@ -796,14 +880,14 @@ def research_board(
     slot_cards = [
         _slot_card(slot)
         for slot in slots_for_season(season)
-        if slot.window_start() == start and (league is None or slot.league == league)
+        if slot.window_start() == start and slot_in_scope(slot, resolved)
     ]
     slot_cards.sort(key=lambda card: (card["sort_at"], card["slot_id"]))
     errors = _error_view(
         games,
         preds,
         season=season,
-        league=league,
+        scope=resolved,
         windows=windows,
         selected_start=start,
         default_start=default_start,

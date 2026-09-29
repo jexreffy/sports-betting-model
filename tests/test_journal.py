@@ -12,6 +12,7 @@ from sbm.journal import (
     present_ticket_legs,
     profit_dollars_for,
     resolve_leg_game,
+    scopes_for_leg,
     settle_leg,
     slate_bounds,
     ticket_from_live_payload,
@@ -398,6 +399,105 @@ def test_journal_week_follows_kickoff_not_the_logged_number() -> None:
     assert sooners["side_color"] == "#841617"
     assert sooners["opp_logo_mark"] == "❌"
     assert tickets[0]["slate_label"] == bills["slate_label"]
+
+
+def test_journal_scopes_keep_p4_nonconference_games() -> None:
+    games = [
+        Game(
+            game_id="mich-wm",
+            league=League.CFB,
+            season=2026,
+            week=3,
+            home_team="Michigan",
+            away_team="Western Michigan",
+            home_conference="B1G",
+            away_conference="MAC",
+        ),
+        Game(
+            game_id="kc-buf",
+            league=League.NFL,
+            season=2026,
+            week=3,
+            home_team="KC",
+            away_team="BUF",
+        ),
+    ]
+    tickets = [
+        {
+            "legs": [
+                {
+                    "league": "cfb",
+                    "season": 2026,
+                    "week": 3,
+                    "team_or_side": "Michigan",
+                    "opponent": "Western Michigan",
+                    "game_id": "mich-wm",
+                    "market": "spread",
+                    "market_line": -28.0,
+                }
+            ]
+        },
+        {
+            "legs": [
+                {
+                    "league": "nfl",
+                    "season": 2026,
+                    "week": 3,
+                    "team_or_side": "KC",
+                    "opponent": "BUF",
+                    "game_id": "kc-buf",
+                    "market": "moneyline",
+                }
+            ]
+        },
+    ]
+    present_ticket_legs(tickets, games)
+    assert tickets[0]["filter_scopes"] == "cfb|B1G"
+    assert tickets[1]["filter_scopes"] == "nfl"
+    orphan = scopes_for_leg(
+        Leg(
+            league=League.CFB,
+            season=2026,
+            week=3,
+            team_or_side="Michigan",
+            opponent="Western Michigan",
+        ),
+        None,
+    )
+    assert orphan == ["cfb", "B1G"]
+    abbrevs = scopes_for_leg(
+        Leg(
+            league=League.CFB,
+            season=2026,
+            week=3,
+            team_or_side="FLA",
+            opponent="AUB",
+        ),
+        None,
+    )
+    assert abbrevs == ["cfb", "SEC"]
+    miss = scopes_for_leg(
+        Leg(
+            league=League.CFB,
+            season=2026,
+            week=3,
+            team_or_side="MISS",
+            opponent="LSU",
+        ),
+        None,
+    )
+    assert miss == ["cfb", "SEC"]
+    cougars = scopes_for_leg(
+        Leg(
+            league=League.CFB,
+            season=2026,
+            week=3,
+            team_or_side="HOU",
+            opponent="TTU",
+        ),
+        None,
+    )
+    assert cougars == ["cfb", "Big 12"]
 
 
 def test_open_novig_seeds_can_settle() -> None:

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from sbm.schema import Game, League, Prediction
 from sbm.web.app import app
-from sbm.web.board import best_market_ev, research_board, research_sort_key
+from sbm.web.board import best_market_ev, research_board, research_sort_key, scope_label
 
 
 def _nfl(game_id: str, kickoff: datetime | None, **extra) -> Game:
@@ -152,6 +152,59 @@ def test_current_week_errors_use_last_week_finals() -> None:
     assert review["errors"]["n_games"] == 1
 
 
+def test_scope_labels_use_usual_casing() -> None:
+    assert scope_label("nfl") == "NFL"
+    assert scope_label("cfb") == "CFB"
+    assert scope_label("all") == "All"
+    assert scope_label("B1G") == "B1G"
+    assert scope_label("Big 12") == "Big 12"
+    assert scope_label("open") == "Open"
+    assert scope_label("straight") == "Straight"
+    assert scope_label("moneyline") == "Moneyline"
+    assert scope_label("spread") == "Spread"
+
+
+def test_p4_filter_keeps_nonconference_games() -> None:
+    sunday = datetime(2026, 9, 20, 17, 0, tzinfo=UTC)
+    games = [
+        Game(
+            game_id="mich-wm",
+            league=League.CFB,
+            season=2026,
+            week=3,
+            home_team="Michigan",
+            away_team="Western Michigan",
+            kickoff=sunday,
+            spread_close=-28.0,
+        ),
+        Game(
+            game_id="ala-aub",
+            league=League.CFB,
+            season=2026,
+            week=3,
+            home_team="Alabama",
+            away_team="Auburn",
+            kickoff=sunday,
+            spread_close=-7.0,
+        ),
+        Game(
+            game_id="kc-buf",
+            league=League.NFL,
+            season=2026,
+            week=3,
+            home_team="KC",
+            away_team="BUF",
+            kickoff=sunday,
+            spread_close=-3.0,
+        ),
+    ]
+    board = research_board(
+        games, season=2026, scope="B1G", week=date(2026, 9, 15), today=date(2026, 9, 21)
+    )
+    ids = [card["game_id"] for card in board["cards"] if card["kind"] == "game"]
+    assert ids == ["mich-wm"]
+
+
 def test_dropdown_runs_through_the_postseason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -162,6 +215,10 @@ def test_dropdown_runs_through_the_postseason(
     assert "Big 12 Championship" in titles.text
     assert "AT&amp;T Stadium" in titles.text
     assert "SEC Championship" in titles.text
+    ten = client.get("/board", params={"week": "2026-12-01", "league": "B1G"})
+    assert "Big Ten Championship" in ten.text
+    assert "SEC Championship" not in ten.text
+    assert "Big 12 Championship" not in ten.text
     assert "Matchup not set" in titles.text
     assert "wager-open" not in titles.text
     assert 'href="/game/' not in titles.text

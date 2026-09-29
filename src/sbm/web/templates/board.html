@@ -30,9 +30,9 @@
         </select>
       </label>
       League:
-      <a class="{{ 'is-current' if league == 'all' else '' }}" href="/board?league=all&week={{ week }}">all</a>
-      <a class="{{ 'is-current' if league == 'nfl' else '' }}" href="/board?league=nfl&week={{ week }}">nfl</a>
-      <a class="{{ 'is-current' if league == 'cfb' else '' }}" href="/board?league=cfb&week={{ week }}">cfb</a>
+      {% for item in scopes %}
+      <a class="{{ 'is-current' if league == item else '' }}" href="/board?league={{ item|urlencode }}&week={{ week }}">{{ item|scope_label }}</a>
+      {% endfor %}
       <label class="team-search">
         <span class="visually-hidden">Search teams</span>
         <input id="team-search" type="search" placeholder="Find a team (Steelers, Pitt, Michigan…)" autocomplete="off" />
@@ -81,7 +81,7 @@
           {% if card.kind == 'slot' %}
           <article class="game-card scan-slot" data-search="{{ card.search_text|e }}">
             <header class="game-meta">
-              <span class="league-chip">{{ card.league|upper }}</span>
+              <span class="league-chip">{{ card.league|scope_label }}</span>
               <span>{{ card.round_name }}</span>
               {% if card.kickoff_iso %}<time datetime="{{ card.kickoff_iso }}"></time>{% elif card.day_label %}<span>{{ card.day_label }}</span>{% endif %}
               {% if card.venue %}<span>{{ card.venue }}</span>{% endif %}
@@ -91,7 +91,7 @@
           {% else %}
           <a id="game-{{ card.game_id }}" class="game-card scan-card fill-{{ card.fill }}{% if card.warning %} has-warning{% endif %}" href="{{ card.game_id|game_href }}" data-search="{{ card.search_text|e }}">
             <header class="game-meta">
-              <span class="league-chip">{{ card.league|upper }}</span>
+              <span class="league-chip">{{ card.league|scope_label }}</span>
               {% if card.kickoff_iso %}<time datetime="{{ card.kickoff_iso }}"></time>{% endif %}
               {% if card.venue %}<span>{{ card.venue }}</span>{% endif %}
               {% if card.is_final %}<span class="final-chip">Final</span>{% endif %}

@@ -14,6 +14,7 @@ from sbm.config import RESEARCH_WINDOWS
 from sbm.journal import Journal, new_ticket_id
 from sbm.mode import Mode, parse_mode
 from sbm.schema import League, Leg, Ticket, TicketKind
+from sbm.web.board import BOARD_SCOPES, scope_label
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -25,6 +26,7 @@ def _game_href(game_id: str) -> str:
 
 
 templates.env.filters["game_href"] = _game_href
+templates.env.filters["scope_label"] = scope_label
 
 app = FastAPI(title="SBM", description="NFL + CFB research, Predictions, and 2026 Journal")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
@@ -104,9 +106,9 @@ def _board_payload(league: str | None = None, week: str | None = None) -> dict:
     from sbm.predictions import load_book, winners_by_game
     from sbm.rankings import load_rankings
     from sbm.units import load_unit_book
-    from sbm.web.board import research_board
+    from sbm.web.board import BOARD_SCOPES, parse_board_scope, research_board
 
-    lg = League(league) if league in {item.value for item in League} else None
+    scope = parse_board_scope(league)
     catalog = load_games()
     season = RESEARCH_WINDOWS.hands_off
     book = load_book(season)
@@ -120,7 +122,7 @@ def _board_payload(league: str | None = None, week: str | None = None) -> dict:
     board = research_board(
         catalog,
         season=season,
-        league=lg,
+        scope=scope,
         week=_parse_week(week),
         predicted_winners=winners_by_game(book),
         units=units,
@@ -141,6 +143,8 @@ def _board_payload(league: str | None = None, week: str | None = None) -> dict:
         "nav": _nav(),
         "active": "board",
         "season": season,
+        "league": scope,
+        "scopes": list(BOARD_SCOPES),
     }
 
 
@@ -162,6 +166,7 @@ def _journal_payload(season: int) -> dict:
         "summary": stats.model_dump(),
         "tickets": tickets,
         "slate_weeks": slate_weeks,
+        "scopes": [item for item in BOARD_SCOPES if item != "all"],
         "nav": _nav(),
         "active": "journal",
     }
@@ -391,10 +396,7 @@ def board_page(
     return templates.TemplateResponse(
         request,
         "board.html",
-        {
-            **payload,
-            "league": league or "all",
-        },
+        payload,
         headers={"Cache-Control": "no-store"},
     )
 

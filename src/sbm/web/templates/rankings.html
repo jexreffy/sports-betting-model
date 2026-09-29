@@ -23,11 +23,11 @@
     <div class="banner">{{ banner }}</div>
     <div class="filters">
       {% for name in groups %}
-      <a class="{{ 'is-current' if name == group else '' }}" href="/rankings?group={{ name|urlencode }}">{{ 'NFL' if name == 'nfl' else name }}</a>
+      <a class="{{ 'is-current' if name == group else '' }}" href="/rankings?group={{ name|urlencode }}">{{ name|scope_label }}</a>
       {% endfor %}
     </div>
     <section class="panel">
-      <h2>{{ season }} {{ 'NFL' if group == 'nfl' else group }}</h2>
+      <h2>{{ season }} {{ group|scope_label }}</h2>
       {% if not saved %}
       <p class="empty">This list follows the model until you move a team.</p>
       {% endif %}

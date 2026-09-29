@@ -28,11 +28,23 @@ def test_board_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert journal.status_code == 200
     assert b"Journal" in journal.content
     assert b"journal-search" in journal.content
+    assert b">NFL<" in journal.content
+    assert b">CFB<" in journal.content
+    assert b">B1G<" in journal.content
+    assert b">Big 12<" in journal.content
+    assert b">All<" in journal.content
     research = client.get("/board")
     assert research.status_code == 200
     assert b"Board" in research.content
     assert b"you fade the number" in research.content
     assert b"not your tickets" in research.content
+    assert b">B1G<" in research.content
+    assert b">Big 12<" in research.content
+    assert b">NFL<" in research.content
+    assert b">CFB<" in research.content
+    assert b">All<" in research.content
+    assert b">nfl<" not in research.content
+    assert b">cfb<" not in research.content
     assert b"Ratings" in research.content
     assert b"Rankings" in research.content
     assert b"week-select" in research.content
@@ -181,9 +193,15 @@ def test_journal_add_and_year(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     year = client.get("/api/journal").json()
     assert year["summary"]["n_tickets"] == 1
     assert year["tickets"][0]["status"] == "open"
+    assert year["tickets"][0]["kind"] == "straight"
+    assert year["tickets"][0]["legs"][0]["market"] == "moneyline"
     page = client.get("/journal")
     assert page.status_code == 200
     assert b"JAX" in page.content
+    assert b">Open<" in page.content
+    assert b"Straight" in page.content
+    assert b"Moneyline" in page.content
+    assert b">open<" not in page.content
     assert b"filter-status" in page.content
     assert b"filter-league" in page.content
     assert b"filter-week" in page.content

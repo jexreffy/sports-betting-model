@@ -4,7 +4,7 @@
   class="real-game game-card{% if meeting.card %} fill-{{ meeting.card.fill }}{% endif %}{% if meeting.opened %} is-opened{% endif %}{% if meeting.card and meeting.card.warning %} has-warning{% endif %}"
 >
   <header class="game-meta">
-    <span class="league-chip">{{ meeting.card.league|upper if meeting.card else league|upper }}</span>
+    <span class="league-chip">{{ meeting.card.league|scope_label if meeting.card else league|scope_label }}</span>
     <span>{{ meeting.season }} · Week {{ meeting.week }}</span>
     {% if meeting.kickoff_iso %}<time datetime="{{ meeting.kickoff_iso }}"></time>{% endif %}
     {% if meeting.card and meeting.card.is_final %}<span class="final-chip">Final</span>{% endif %}
