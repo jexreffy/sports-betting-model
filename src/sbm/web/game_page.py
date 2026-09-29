@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from sbm.backtest import infer_current_week
 from sbm.config import RESEARCH_WINDOWS
-from sbm.matchup import MatchupView, SitePrice, price_matchup, resolve_team
+from sbm.errors import explain_game_row, row_from_prediction
+from sbm.matchup import MatchupView, MeetingPrice, SitePrice, price_matchup, resolve_team
 from sbm.mode import Mode
 from sbm.predictions import kickoff_iso, load_book, team_key, winners_by_game
 from sbm.rankings import load_rankings
-from sbm.schema import Game, League, SeasonPredictions
+from sbm.schema import Game, League, Prediction, SeasonPredictions
 from sbm.teams import TeamFace, team_face
 from sbm.units import UnitBook, load_unit_book
 from sbm.web.board import game_cards, is_international_venue
@@ -156,7 +157,7 @@ def _view_payload(
             )
         ],
         "meetings": [
-            _meeting_payload(item.game, item.factors, cards.get(item.game.game_id), book, opened_id)
+            _meeting_payload(item, cards.get(item.game.game_id), book, opened_id)
             for item in view.meetings
         ],
         "opened_id": opened_id,
@@ -192,13 +193,24 @@ def _cards_by_id(
     return cards
 
 
+def _miss_lines(game: Game, meeting: MeetingPrice) -> list[str]:
+    pred = Prediction(
+        game_id=game.game_id,
+        predicted_home_margin=meeting.margin,
+        predicted_total=meeting.predicted_total,
+        home_win_prob=0.5,
+    )
+    return explain_game_row(row_from_prediction(game, pred))
+
+
 def _meeting_payload(
-    game: Game,
-    factors: list,
+    meeting: MeetingPrice,
     card: dict | None,
     book: SeasonPredictions | None,
     opened_id: str | None,
 ) -> dict:
+    game = meeting.game
+    factors = meeting.factors
     away = team_face(game.league, game.away_team)
     home = team_face(game.league, game.home_team)
     if game.home_rest_days is None or game.away_rest_days is None:
@@ -224,6 +236,7 @@ def _meeting_payload(
         "factors": [{"label": row.label, "points": f"{row.points:+.1f}"} for row in factors],
         "take": _take_text(book, game),
         "card": card,
+        "miss": _miss_lines(game, meeting) if game.is_final else [],
     }
 
 

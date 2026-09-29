@@ -74,6 +74,13 @@
       {% endif %}
     </li>
     {% endfor %}
-  </ul>
+    </ul>
+  {% endif %}
+  {% if meeting.miss %}
+  <div class="game-miss">
+    {% for line in meeting.miss %}
+    <p>{{ line }}</p>
+    {% endfor %}
+  </div>
   {% endif %}
 </article>

@@ -58,6 +58,6 @@ def test_board_does_not_surface_paper_ledgers(
     assert "summary" not in body
     assert "curve" not in body
     assert "book" not in body
-    page = client.get("/research")
+    page = client.get("/board")
     assert b"bankroll" not in page.content
     assert b"Chart" not in page.content

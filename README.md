@@ -1,16 +1,16 @@
 # SBM — NFL + CFB research, Predictions, and 2026 Journal
 
-A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**. **Research** is one football week at a time, model vs market. **Predictions** is your current-year W/L take on NFL and P4 CFB. **Records** ranks each group from games already final.
+A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**. **Board** is one football week at a time, model vs the ingested line. **Predictions** is your current-year W/L take on NFL and P4 CFB. **Records** ranks each group from games already final.
 
 ## Surfaces
 
 | Surface | What it is | Store |
 | --- | --- | --- |
-| **Research** | One Tuesday–Monday week, shared by NFL and CFB. Condensed cards, heatmap order, local kickoff clocks. Empty slots for published 2026 title and playoff times. Open a game to log a ticket. | Elo from `data/raw/` |
+| **Board** | One Tuesday–Monday week, shared by NFL and CFB. Last week's model miss in English, then condensed cards, heatmap order, local kickoff clocks. Empty slots for published 2026 title and playoff times. Open a game to log a ticket. | Elo from `data/raw/` |
 | **Game** | One matchup. Three model prices, then each real meeting in that season, with Log buttons. | Elo and unit stats from `data/raw/` |
 | **Predictions** | Current-year schedule W/L takes (NFL + B1G/SEC/ACC/Big 12). Results fill in; picks never auto-flip. | `data/predictions/{season}.json` |
 | **Ratings** | Neutral-field favorability versus an average opponent. | Elo from `data/raw/` |
-| **Rankings** | Your order of NFL and each Power conference. Research shows it beside the model. | `data/rankings/{season}.json` |
+| **Rankings** | Your order of NFL and each Power conference. Board shows it beside the model. | `data/rankings/{season}.json` |
 | **Records** | Overall and conference record from ingested finals. Win percentage, then head-to-head, conference record, point differential, points scored. Not the official standings. | Finals in `data/raw/` |
 | **Journal** | What you actually bet in 2026 (Novig today): dollars, parlays, early cash-out, year hit/miss | `data/journal/tickets.jsonl` |
 
@@ -19,7 +19,7 @@ A local research tool that prices NFL and FBS **spreads, moneylines, and totals*
 ## Weekly playbook
 
 1. `sbm ingest` if the slate looks stale.
-2. Open **Research** (`/` or `/research`). Pick the week. Green, then yellow, then orange cards come first. Search a team, then open a game to log a real ticket into Journal. Weeks with no closing line still list the games. Championship and playoff weeks show empty slots until the matchups exist.
+2. Open **Board** (`/` or `/board`). Last week's model miss sits above the cards (this is not your Journal). Pick the week. Green, then yellow, then orange cards come first. Search a team, then open a game to log a real ticket into Journal. Weeks with no closing line still list the games. Championship and playoff weeks show empty slots until the matchups exist.
 3. **Predictions** (`/predictions`): click remaining winners. **Rankings** (`/rankings`) is your order; paste a list in chat and the agent can apply it. CFB non-conference leftovers stay flagged for a gut call.
 4. **Records** (`/records`): overall and conference record from finals already ingested. This is not the league’s tiebreaker sheet.
 5. **Journal** (`/journal`): search and filter the book. After games, `sbm journal settle`.
@@ -30,7 +30,7 @@ A local research tool that prices NFL and FBS **spreads, moneylines, and totals*
 sbm simulate backtest   # warmup 2015-2020, paper 2021-2025, skip 2026
 ```
 
-## Research colors
+## Board colors
 
 The week is ordered by these fills, then by the best expected value on the card. A game with no posted line sits at the bottom. A game that is already final has no fill, no warning badge, and no You/Model ranks — those marks are for games still open. Warning is a red badge/border, not a fill. The card color is the spread versus the market:
 
@@ -102,7 +102,7 @@ sbm serve                 # 127.0.0.1:8000, no reload
 sbm serve --reload        # pick up Python edits
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Research). **Game** is `/game`. **Predictions** is `/predictions`. **Ratings** is `/ratings`. **Rankings** is `/rankings`. **Records** is `/records`. **Journal** is `/journal`. Kickoff clocks render in the browser’s local time zone. Week labels stay calendar dates.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (Board). **Game** is `/game`. **Predictions** is `/predictions`. **Ratings** is `/ratings`. **Rankings** is `/rankings`. **Records** is `/records`. **Journal** is `/journal`. Kickoff clocks render in the browser’s local time zone. Week labels stay calendar dates. `/research` redirects to `/board`.
 
 Ingest of a season range **merges** into the existing JSONL: only those seasons are replaced.
 

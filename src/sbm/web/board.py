@@ -5,7 +5,7 @@ from datetime import date, datetime
 
 from sbm.backtest import current_slate, pregame_predictions
 from sbm.config import get_settings, params_for
-from sbm.errors import WeekErrorReport, bias_by_league, row_from_prediction
+from sbm.errors import present_league_errors, row_from_prediction
 from sbm.journal import format_slate, slate_bounds, slate_for_game, windows_between
 from sbm.mode import Mode
 from sbm.models.engine import ModelEngine
@@ -640,6 +640,101 @@ def _slot_card(slot: PostseasonSlot) -> dict:
     }
 
 
+def _prior_window(
+    windows: list[tuple[date, date]], start: date
+) -> tuple[date, date] | None:
+    for index, window in enumerate(windows):
+        if window[0] == start:
+            return windows[index - 1] if index > 0 else None
+    return None
+
+
+def _final_rows_for_window(
+    games: list[Game],
+    preds: dict[str, Prediction],
+    *,
+    season: int,
+    league: League | None,
+    window_start: date,
+    default_start: date,
+) -> list:
+    rows = []
+    for game in games:
+        if game.season != season or not game.is_final:
+            continue
+        if league is not None and game.league != league:
+            continue
+        slate = slate_for_game(game)
+        if slate is None:
+            if window_start != default_start:
+                continue
+        elif slate[0] != window_start:
+            continue
+        pred = preds.get(game.game_id)
+        if pred is None:
+            continue
+        rows.append(row_from_prediction(game, pred))
+    return rows
+
+
+def _error_view(
+    games: list[Game],
+    preds: dict[str, Prediction],
+    *,
+    season: int,
+    league: League | None,
+    windows: list[tuple[date, date]],
+    selected_start: date,
+    default_start: date,
+) -> dict:
+    """Last week's miss on the current slate; the selected week when reviewing."""
+    caption = (
+        "This is the model's miss, not your tickets. A small n does not change K."
+    )
+    if selected_start == default_start:
+        scored = _prior_window(windows, selected_start)
+        heading = "Last week"
+    else:
+        scored = next((item for item in windows if item[0] == selected_start), None)
+        heading = "This slate"
+    if scored is None:
+        return {
+            "title": heading,
+            "slate_label": None,
+            "caption": caption,
+            "n_games": 0,
+            "by_league": [],
+        }
+    rows = _final_rows_for_window(
+        games,
+        preds,
+        season=season,
+        league=league,
+        window_start=scored[0],
+        default_start=default_start,
+    )
+    prior = _prior_window(windows, scored[0])
+    prior_rows = (
+        _final_rows_for_window(
+            games,
+            preds,
+            season=season,
+            league=league,
+            window_start=prior[0],
+            default_start=default_start,
+        )
+        if prior is not None
+        else []
+    )
+    return {
+        "title": heading,
+        "slate_label": format_slate(*scored),
+        "caption": caption,
+        "n_games": len(rows),
+        "by_league": present_league_errors(rows, prior_rows),
+    }
+
+
 def research_board(
     games: list[Game],
     *,
@@ -669,7 +764,6 @@ def research_board(
     winners = predicted_winners or {}
     yours = you_ranks or {}
     week_cards: list[dict] = []
-    finals: list[tuple[Game, Prediction]] = []
     for game in games:
         if game.season != season:
             continue
@@ -684,8 +778,6 @@ def research_board(
         pred = preds.get(game.game_id)
         if pred is None:
             continue
-        if game.is_final:
-            finals.append((game, pred))
         picks = picks_from_prediction(game, pred, Mode.SIMULATION, apply_week_gate=False)
         card = _card(
             game,
@@ -707,13 +799,14 @@ def research_board(
         if slot.window_start() == start and (league is None or slot.league == league)
     ]
     slot_cards.sort(key=lambda card: (card["sort_at"], card["slot_id"]))
-    rows = [row_from_prediction(game, pred) for game, pred in finals]
-    errors = WeekErrorReport(
+    errors = _error_view(
+        games,
+        preds,
         season=season,
-        week=0,
-        n_games=len(rows),
-        games=rows,
-        by_league=bias_by_league(rows),
+        league=league,
+        windows=windows,
+        selected_start=start,
+        default_start=default_start,
     )
     return {
         "weeks": [
