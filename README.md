@@ -1,5 +1,7 @@
 # SBM — NFL + CFB research, Predictions, and 2026 Journal
 
+Agents: start at [`AGENTS.md`](AGENTS.md) (handoff, hard rules, weekly loop). Humans: this README.
+
 A local research tool that prices NFL and FBS **spreads, moneylines, and totals**. It never places a sportsbook wager. You log real 2026 tickets in **Journal**. **Board** is one football week at a time, model vs the ingested line. **Predictions** is your current-year W/L take on NFL and P4 CFB. **Records** ranks each group from games already final.
 
 ## Surfaces
