@@ -809,6 +809,38 @@ def api_journal_cashout(body: JournalCashoutRequest) -> JSONResponse:
     return JSONResponse(ticket.model_dump(mode="json"))
 
 
+@app.post("/api/ingest")
+def api_ingest() -> JSONResponse:
+    """Refresh the hands-off season only. Historical seasons stay on disk."""
+    from sbm.data.ingest import ingest_seasons
+
+    season = RESEARCH_WINDOWS.hands_off
+    try:
+        result = ingest_seasons("all", [season])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    body = result.as_dict()
+    body["season"] = season
+    return JSONResponse(body)
+
+
+@app.post("/api/journal/settle")
+def api_journal_settle() -> JSONResponse:
+    """Grade open hands-off tickets whose games are already final."""
+    from sbm.data.store import games_by_id, load_games
+
+    season = RESEARCH_WINDOWS.hands_off
+    book = Journal()
+    settled = book.settle(games_by_id(load_games()), season=season)
+    return JSONResponse(
+        {
+            "season": season,
+            "settled": settled,
+            "summary": book.year(season).model_dump(),
+        }
+    )
+
+
 @app.post("/api/journal/drop")
 def api_journal_drop(body: JournalDropRequest) -> JSONResponse:
     try:

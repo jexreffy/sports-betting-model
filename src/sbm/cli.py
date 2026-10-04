@@ -49,35 +49,26 @@ def ingest(
     end: Annotated[int, typer.Option(help="Last season inclusive")] = RESEARCH_WINDOWS.hands_off,
 ) -> None:
     """Download schedules, results, and closing lines into data/raw/."""
-    from sbm.data.store import save_games
+    from sbm.data.ingest import ingest_seasons
+    from sbm.paths import games_path, units_path
 
     seasons = _seasons(start, end)
     targets = [League.NFL, League.CFB] if league == "all" else [League(league.lower())]
     if League.NFL in targets:
-        from sbm.data.nfl import download_nfl_games, download_nfl_team_stats
-        from sbm.units import nfl_unit_weeks, save_units
-
         typer.echo(f"Ingesting NFL {seasons[0]}-{seasons[-1]}…")
-        games = download_nfl_games(seasons)
-        path = save_games(League.NFL, games, replace_seasons=set(seasons))
-        typer.echo(f"Wrote {len(games)} NFL games to {path}")
-        stats = download_nfl_team_stats(seasons)
-        weeks = nfl_unit_weeks(stats, games)
-        units = save_units(weeks, league=League.NFL, replace_seasons=set(seasons))
-        typer.echo(f"Wrote {len(weeks)} NFL unit weeks to {units}")
     if League.CFB in targets:
-        from sbm.data.cfb import download_cfb_advanced, download_cfb_games, download_cfb_talent
-        from sbm.units import cfb_unit_weeks, save_units
-
         typer.echo(f"Ingesting CFB FBS {seasons[0]}-{seasons[-1]}…")
-        games = download_cfb_games(seasons)
-        path = save_games(League.CFB, games, replace_seasons=set(seasons))
-        typer.echo(f"Wrote {len(games)} CFB games to {path}")
-        advanced = download_cfb_advanced(seasons)
-        talent = download_cfb_talent(seasons)
-        weeks = cfb_unit_weeks(advanced, talent)
-        units = save_units(weeks, league=League.CFB, replace_seasons=set(seasons))
-        typer.echo(f"Wrote {len(weeks)} CFB unit weeks to {units}")
+    try:
+        result = ingest_seasons(league, seasons)
+    except RuntimeError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    if result.nfl_games is not None:
+        typer.echo(f"Wrote {result.nfl_games} NFL games to {games_path('nfl')}")
+        typer.echo(f"Wrote {result.nfl_unit_weeks} NFL unit weeks to {units_path()}")
+    if result.cfb_games is not None:
+        typer.echo(f"Wrote {result.cfb_games} CFB games to {games_path('cfb')}")
+        typer.echo(f"Wrote {result.cfb_unit_weeks} CFB unit weeks to {units_path()}")
 
 
 @simulate_app.command("backtest")
