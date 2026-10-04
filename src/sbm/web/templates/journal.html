@@ -20,6 +20,7 @@
   </header>
   <main>
     <div class="banner">{{ banner }}</div>
+    {% include "_chores.html" %}
     <section class="stats">
       <div class="stat"><span>Tickets</span><strong>{{ summary.n_tickets }}</strong></div>
       <div class="stat"><span>Open</span><strong>{{ summary.n_open }}</strong></div>
